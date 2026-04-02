@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Наш Мессенджер</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="backdrop" id="backdrop"></div>
+
+<div class="drawer" id="drawer">
+    <div class="drawer-header">
+        <div class="drawer-avatar">П</div>
+        <div class="drawer-user-info">
+            <div class="name">Мой Профиль</div>
+            <div class="phone">+1 234 567 89 00</div>
+        </div>
+    </div>
+    <ul class="drawer-menu">
+        <li><span class="icon">👤</span> Профиль</li>
+        <li><span class="icon">👥</span> Контакты</li>
+        <li><span class="icon">⚙️</span> Настройки</li>
+        <li id="theme-toggle">
+            <span class="icon" id="theme-icon">🌙</span> 
+            <span id="theme-text">Ночной режим</span>
+        </li>
+        <li><span class="icon">❓</span> Помощь</li>
+    </ul>
+</div>
+
+<div class="sidebar">
+    <div class="sidebar-header">
+        <button class="menu-btn" aria-label="Меню">☰</button>
+        <input type="text" class="search-bar" placeholder="Поиск...">
+    </div>
+    <div class="chat-mock" id="chat-item-global">
+        <div class="avatar">Г</div>
+        <div class="chat-info">
+            <div style="font-weight: 600; font-size: 15px;">Глобальный чат</div>
+            <div style="font-size: 13px; opacity: 0.9;">Socket.IO работает!</div>
+        </div>
+    </div>
+</div>
+
+<div class="chat-area">
+    <div class="chat-header">
+        <button class="back-btn" id="back-btn" aria-label="Назад">←</button>
+        <div class="chat-header-info">
+            <span class="chat-name">Глобальный чат</span>
+            <span class="chat-status">онлайн</span>
+        </div>
+    </div>
+
+    <div class="messages" id="messages-list"></div>
+
+    <div class="input-area-wrapper">
+        <div class="input-area">
+            <input type="text" id="message-input" placeholder="Написать сообщение..." autocomplete="off">
+            <button id="send-btn" aria-label="Отправить">↑</button>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script>
+    // --- ЛОГИКА ИНТЕРФЕЙСА (МЕНЮ И ТЕМА) ---
+    const menuBtn = document.querySelector('.menu-btn');
+    const drawer = document.getElementById('drawer');
+    const backdrop = document.getElementById('backdrop');
+    
+    const themeToggle = document.getElementById('theme-toggle');
+    const themeIcon = document.getElementById('theme-icon');
+    const themeText = document.getElementById('theme-text');
+
+    menuBtn.addEventListener('click', () => {
+        drawer.classList.add('open');
+        backdrop.classList.add('show');
+    });
+
+    backdrop.addEventListener('click', () => {
+        drawer.classList.remove('open');
+        backdrop.classList.remove('show');
+    });
+
+    if (localStorage.getItem('theme') === 'dark') {
+        document.body.classList.add('dark-theme');
+        themeIcon.textContent = '☀️';
+        themeText.textContent = 'Светлый режим';
+    }
+
+    themeToggle.addEventListener('click', () => {
+        document.body.classList.toggle('dark-theme');
+        if (document.body.classList.contains('dark-theme')) {
+            localStorage.setItem('theme', 'dark');
+            themeIcon.textContent = '☀️';
+            themeText.textContent = 'Светлый режим';
+        } else {
+            localStorage.setItem('theme', 'light');
+            themeIcon.textContent = '🌙';
+            themeText.textContent = 'Ночной режим';
+        }
+    });
+
+    // --- ЛОГИКА НАВИГАЦИИ ДЛЯ МОБИЛЬНЫХ ЭКРАНОВ ---
+    const chatItemGlobal = document.getElementById('chat-item-global');
+    const backBtn = document.getElementById('back-btn');
+
+    chatItemGlobal.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+            document.body.classList.add('mobile-chat-active');
+        }
+    });
+
+    backBtn.addEventListener('click', () => {
+        document.body.classList.remove('mobile-chat-active');
+    });
+
+
+    // --- ЛОГИКА СОКЕТОВ ---
+    const socket = io('http://localhost:5000');
+    const messageInput = document.getElementById('message-input');
+    const sendBtn = document.getElementById('send-btn');
+    const messagesList = document.getElementById('messages-list');
+
+    function sendMessage() {
+        const text = messageInput.value.trim();
+        if (text) {
+            socket.emit('send_message', { text: text });
+            messageInput.value = '';
+            
+            if (window.innerWidth > 768) {
+                messageInput.focus(); 
+            }
+        }
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+
+    socket.on('receive_message', (data) => {
+        const msgDiv = document.createElement('div');
+        const timeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+        if (data.senderId === socket.id) {
+            msgDiv.className = 'message my-message';
+        } else {
+            msgDiv.className = 'message other-message';
+        }
+
+        msgDiv.innerHTML = `
+            ${data.text}
+            <span class="meta">${timeString}</span>
+        `;
+
+        messagesList.appendChild(msgDiv);
+        messagesList.scrollTop = messagesList.scrollHeight;
+    });
+</script>
+
+</body>
+</html>
