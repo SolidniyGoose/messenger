@@ -14,6 +14,9 @@ app.use(cors({
 }));
 app.use(express.json());
 
+const usersRoutes = require('./routes/users');
+app.use('/api/users', usersRoutes);
+
 // Инициализация Socket.IO
 const io = new Server(server, {
     cors: {
