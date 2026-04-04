@@ -117,6 +117,31 @@
         document.body.classList.remove('mobile-chat-active');
     });
 
+    // --- КРИПТОГРАФИЯ (Web Crypto API) ---
+    let myKeyPair = null;
+    let myPublicKeyBase64 = null;
+
+    // Функция для создания пары ключей
+    async function generateKeys() {
+        console.log("Генерируем криптографические ключи...");
+        myKeyPair = await window.crypto.subtle.generateKey(
+            { name: "ECDH", namedCurve: "P-256" },
+            true, // Разрешаем экспорт ключей
+            ["deriveKey", "deriveBits"]
+        );
+
+        // Экспортируем публичный ключ, чтобы его можно было отправить на сервер
+        const exportedPubKey = await window.crypto.subtle.exportKey("raw", myKeyPair.publicKey);
+        
+        // Превращаем ключ в удобную строку (Base64), чтобы легко передавать по сети
+        const pubKeyArray = Array.from(new Uint8Array(exportedPubKey));
+        myPublicKeyBase64 = btoa(String.fromCharCode.apply(null, pubKeyArray));
+
+        console.log("Мой публичный ключ готов:", myPublicKeyBase64);
+    }
+
+    // Запускаем генерацию ключей сразу при открытии страницы
+    generateKeys();
 
     // --- ЛОГИКА СОКЕТОВ ---
     const socket = io();
