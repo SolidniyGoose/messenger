@@ -16,6 +16,16 @@
         <button id="auth-submit-btn" style="width: 100%; padding: 14px; background: var(--gradient-primary); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; transition: opacity 0.2s;">Войти / Создать</button>
     </div>
 </div>
+<div id="contacts-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
+    <div style="background: var(--bg-sidebar); width: 90%; max-width: 400px; border-radius: 20px; padding: 20px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0; color: var(--text-main);">Контакты</h3>
+            <button id="close-contacts-btn" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</button>
+        </div>
+        <div id="contacts-list" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            </div>
+    </div>
+</div>
 
 <div class="backdrop" id="backdrop"></div>
 
@@ -29,7 +39,7 @@
     </div>
     <ul class="drawer-menu">
         <li><span class="icon">👤</span> Профиль</li>
-        <li><span class="icon">👥</span> Контакты</li>
+        <li id="contacts-btn"><span class="icon">👥</span> Контакты</li>
         <li><span class="icon">⚙️</span> Настройки</li>
         <li id="theme-toggle">
             <span class="icon" id="theme-icon">🌙</span> 
@@ -43,13 +53,6 @@
     <div class="sidebar-header">
         <button class="menu-btn" aria-label="Меню">☰</button>
         <input type="text" class="search-bar" placeholder="Поиск...">
-    </div>
-    <div class="chat-mock" id="chat-item-global">
-        <div class="avatar">Г</div>
-        <div class="chat-info">
-            <div style="font-weight: 600; font-size: 15px;">Глобальный чат</div>
-            <div style="font-size: 13px; opacity: 0.9;">Socket.IO работает!</div>
-        </div>
     </div>
 </div>
 
@@ -130,14 +133,7 @@
     });
 
     // --- ЛОГИКА НАВИГАЦИИ ДЛЯ МОБИЛЬНЫХ ЭКРАНОВ ---
-    const chatItemGlobal = document.getElementById('chat-item-global');
     const backBtn = document.getElementById('back-btn');
-
-    chatItemGlobal.addEventListener('click', () => {
-        if (window.innerWidth <= 768) {
-            document.body.classList.add('mobile-chat-active');
-        }
-    });
 
     backBtn.addEventListener('click', () => {
         document.body.classList.remove('mobile-chat-active');
@@ -220,69 +216,125 @@
         }
     }
 
-    // Функция для загрузки списка пользователей с сервера
-    async function loadUsers() {
+    // --- 1. ФУНКЦИЯ: ОТКРЫТЬ ЧАТ С ПОЛЬЗОВАТЕЛЕМ ---
+    async function openChatWith(user) {
+        // Закрываем модалки контактов и меню
+        document.getElementById('contacts-modal').style.display = 'none';
+        document.getElementById('drawer').classList.remove('open');
+        document.getElementById('backdrop').classList.remove('show');
+        
+        // Для мобилок - переключаем интерфейс на экран чата
+        if (window.innerWidth <= 768) {
+            document.body.classList.add('mobile-chat-active');
+        }
+
+        document.querySelector('.chat-name').textContent = user.username;
+        currentChatUser = user.username;
+        
+        // Сразу перерисовываем боковую панель!
+        // Если мы не общались, контакт появится в списке активных (как черновик).
+        loadActiveChats(); 
+        
+        console.log(`🔑 Вычисляем секрет с ${user.username}...`);
+        currentSharedKey = await deriveSharedSecret(user.publicKey);
+        
+        if (currentSharedKey) {
+            document.getElementById('messages-list').innerHTML = ''; 
+            
+            // Загружаем историю
+            const histRes = await fetch(`/api/history/${myUsername}/${user.username}`);
+            const history = await histRes.json();
+            
+            for (let msg of history) {
+                const decryptedText = await decryptMessage(msg.secretBox, currentSharedKey);
+                if (decryptedText) {
+                    const type = msg.sender === myUsername ? 'my-message' : 'other-message';
+                    displayMessage(decryptedText, type, new Date(msg.createdAt));
+                }
+            }
+        }
+    }
+
+    // --- 2. ФУНКЦИЯ: ЗАГРУЗКА ТОЛЬКО АКТИВНЫХ ЧАТОВ ---
+    async function loadActiveChats() {
+        if (!myUsername) return; 
+
         try {
-            const response = await fetch('/api/users');
-            const users = await response.json();
+            const usersRes = await fetch('/api/users');
+            const allUsers = await usersRes.json();
+            
+            // Спрашиваем у сервера, с кем у нас есть переписка
+            const activeRes = await fetch(`/api/users/${myUsername}/chats`);
+            const activeNames = await activeRes.json();
             
             const sidebar = document.querySelector('.sidebar');
+            document.querySelectorAll('.sidebar .chat-mock').forEach(el => el.remove()); // Очищаем список
             
-            // Очищаем старый список контактов (чтобы не было дубликатов при автообновлении)
-            document.querySelectorAll('.chat-mock').forEach(el => {
-                if (el.id !== 'chat-item-global') el.remove();
-            });
+            // МАГИЯ ИСЧЕЗНОВЕНИЯ: показываем только тех, кто есть в истории БД, 
+            // ИЛИ того, с кем мы открыли чат прямо сейчас
+            const usersToShow = allUsers.filter(user => 
+                user.username !== myUsername && 
+                (activeNames.includes(user.username) || user.username === currentChatUser)
+            );
             
-            users.forEach(user => {
-                if (user.username === myUsername) return; 
-
+            usersToShow.forEach(user => {
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
-                const initial = user.username.charAt(0).toUpperCase();
+                
+                // Делаем неактивные чаты визуально темнее/светлее
+                if (user.username !== currentChatUser) {
+                    chatItem.style.background = 'var(--input-bg)';
+                    chatItem.style.color = 'var(--text-main)';
+                }
                 
                 chatItem.innerHTML = `
-                    <div class="avatar">${initial}</div>
+                    <div class="avatar" style="${user.username !== currentChatUser ? 'background: var(--gradient-primary); color: white;' : ''}">${user.username.charAt(0).toUpperCase()}</div>
                     <div class="chat-info">
                         <div style="font-weight: 600; font-size: 15px;">${user.username}</div>
-                        <div style="font-size: 13px; opacity: 0.9;">Нажмите для E2EE чата</div>
+                        <div style="font-size: 13px; opacity: 0.9;">Нажмите для чата</div>
                     </div>
                 `;
                 
-                chatItem.addEventListener('click', async () => {
-                    document.querySelector('.chat-name').textContent = user.username;
-                    currentChatUser = user.username;
-                    
-                    console.log(`🔑 Вычисляем общий секрет с ${user.username}...`);
-                    currentSharedKey = await deriveSharedSecret(user.publicKey);
-                    
-                    if (currentSharedKey) {
-                        document.getElementById('messages-list').innerHTML = ''; 
-                        // --- НОВОЕ: ЗАГРУЗКА ИСТОРИИ ---
-                        console.log("📥 Загружаем зашифрованную историю с сервера...");
-                        const histRes = await fetch(`/api/history/${myUsername}/${user.username}`);
-                        const history = await histRes.json();
-                        
-                        // Расшифровываем каждое сообщение
-                        for (let msg of history) {
-                            const decryptedText = await decryptMessage(msg.secretBox, currentSharedKey);
-                            if (decryptedText) {
-                                const type = msg.sender === myUsername ? 'my-message' : 'other-message';
-                                displayMessage(decryptedText, type, new Date(msg.createdAt));
-                            } else {
-                                displayMessage("🔒 Сообщение не расшифровано", "other-message", new Date(msg.createdAt));
-                            }
-                        }
-                        // -------------------------------
-                        console.log("✅ Теперь мы можем безопасно переписываться!");
-                    }
-                });
-
+                chatItem.addEventListener('click', () => openChatWith(user));
                 sidebar.appendChild(chatItem);
             });
         } catch (error) {
-            console.error("❌ Ошибка загрузки пользователей:", error);
+            console.error("❌ Ошибка загрузки чатов:", error);
         }
     }
+
+    // --- 3. ЛОГИКА ОКНА КОНТАКТОВ ---
+    document.getElementById('contacts-btn').addEventListener('click', async () => {
+        document.getElementById('drawer').classList.remove('open');
+        document.getElementById('backdrop').classList.remove('show');
+        document.getElementById('contacts-modal').style.display = 'flex';
+        
+        try {
+            const res = await fetch('/api/users');
+            const users = await res.json();
+            const list = document.getElementById('contacts-list');
+            list.innerHTML = '';
+            
+            users.forEach(user => {
+                if (user.username === myUsername) return; 
+                
+                const item = document.createElement('div');
+                item.style.cssText = "display: flex; align-items: center; gap: 15px; padding: 12px; cursor: pointer; border-radius: 12px; background: var(--input-bg); transition: 0.2s;";
+                item.innerHTML = `
+                    <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${user.username.charAt(0).toUpperCase()}</div>
+                    <div style="font-weight: 600; color: var(--text-main); font-size: 16px;">${user.username}</div>
+                `;
+                item.addEventListener('click', () => openChatWith(user));
+                list.appendChild(item);
+            });
+        } catch (e) {
+            console.error("Ошибка загрузки контактов:", e);
+        }
+    });
+
+    document.getElementById('close-contacts-btn').addEventListener('click', () => {
+        document.getElementById('contacts-modal').style.display = 'none';
+    });
 
     // 2. Функция для создания пары ключей (ТЕПЕРЬ С ПАМЯТЬЮ!)
     async function generateKeys() {
@@ -340,10 +392,10 @@
         socket.emit('register_user', myUsername);
         await registerUserOnServer(myUsername, myPublicKeyBase64);
         
-        await loadUsers();
+        await loadActiveChats();
         
         // Магия: Автоматически обновляем контакты каждые 5 секунд!
-        setInterval(loadUsers, 5000); 
+        setInterval(loadActiveChats, 5000); 
     }
 
     // Запускаем процесс при открытии страницы
@@ -420,8 +472,8 @@
         document.querySelector('.drawer-user-info .name').textContent = username;
         document.querySelector('.drawer-avatar').textContent = username.charAt(0).toUpperCase();
 
-        await loadUsers();
-        setInterval(loadUsers, 5000); // Автообновление контактов
+        await loadActiveChats();
+        setInterval(loadActiveChats, 5000); // Автообновление контактов
         return true;
     }
 
@@ -456,8 +508,8 @@
                 socket.emit('register_user', myUsername);
                 document.querySelector('.drawer-user-info .name').textContent = myUsername;
                 document.querySelector('.drawer-avatar').textContent = myUsername.charAt(0).toUpperCase();
-                loadUsers();
-                setInterval(loadUsers, 5000);
+                loadActiveChats();
+                setInterval(loadActiveChats, 5000);
             });
     }
 

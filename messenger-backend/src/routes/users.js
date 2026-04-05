@@ -48,4 +48,33 @@ router.get('/', async (req, res) => {
     }
 });
 
+// 4. ПОЛУЧЕНИЕ СПИСКА АКТИВНЫХ ЧАТОВ ПОЛЬЗОВАТЕЛЯ
+router.get('/:username/chats', async (req, res) => {
+    try {
+        const { username } = req.params;
+        // Ищем все сообщения, где мы либо отправитель, либо получатель
+        const messages = await prisma.message.findMany({
+            where: {
+                OR: [
+                    { sender: username },
+                    { recipient: username }
+                ]
+            },
+            select: { sender: true, recipient: true }
+        });
+
+        // Собираем уникальные имена собеседников
+        const chatUsers = new Set();
+        messages.forEach(msg => {
+            if (msg.sender !== username) chatUsers.add(msg.sender);
+            if (msg.recipient !== username) chatUsers.add(msg.recipient);
+        });
+
+        res.json(Array.from(chatUsers));
+    } catch (error) {
+        console.error("Ошибка при поиске чатов:", error);
+        res.status(500).json({ error: "Ошибка сервера" });
+    }
+});
+
 module.exports = router;
