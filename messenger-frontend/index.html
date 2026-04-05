@@ -120,31 +120,73 @@
     // --- КРИПТОГРАФИЯ (Web Crypto API) ---
     let myKeyPair = null;
     let myPublicKeyBase64 = null;
-    let myUsername = null; // <--- ДОБАВИЛИ ЭТУ СТРОЧКУ
+    let myUsername = null; 
+    let currentSharedKey = null; // <--- Для общего секрета
+    let currentChatUser = null;  // <--- Имя текущего собеседника
 
-    // 1. Новая функция: отправляет ключ на сервер
+    // --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Из Base64 обратно в байты ---
+    function base64ToArrayBuffer(base64) {
+        const binaryString = window.atob(base64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        return bytes.buffer;
+    }
+
+    // --- МАГИЯ E2EE: Создаем Общий Секрет (Shared Key) ---
+    async function deriveSharedSecret(friendPublicKeyBase64) {
+        try {
+            // 1. Превращаем Base64 обратно в формат, понятный крипто-движку
+            const rawKey = base64ToArrayBuffer(friendPublicKeyBase64);
+
+            // 2. Импортируем публичный ключ друга
+            const friendPublicKey = await window.crypto.subtle.importKey(
+                "raw",
+                rawKey,
+                { name: "ECDH", namedCurve: "P-256" },
+                true,
+                []
+            );
+
+            // 3. Смешиваем НАШ ПРИВАТНЫЙ и ЕГО ПУБЛИЧНЫЙ ключи
+            const sharedSecretKey = await window.crypto.subtle.deriveKey(
+                {
+                    name: "ECDH",
+                    public: friendPublicKey
+                },
+                myKeyPair.privateKey, // Наш секрет из браузера
+                {
+                    name: "AES-GCM",
+                    length: 256 // Максимальная защита
+                },
+                false, // Запрещаем экспортировать этот ключ из памяти
+                ["encrypt", "decrypt"] // Разрешаем шифровать и расшифровывать
+            );
+
+            console.log("🔥 Общий секретный ключ (AES-GCM) успешно создан!");
+            return sharedSecretKey;
+        } catch (error) {
+            console.error("❌ Ошибка при вычислении общего секрета:", error);
+            return null;
+        }
+    }
+
+    // 1. Функция: отправляет ключ на сервер
     async function registerUserOnServer(username, publicKeyBase64) {
         try {
             const response = await fetch('/api/users/register', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    username: username,
-                    publicKey: publicKeyBase64
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username, publicKey: publicKeyBase64 })
             });
 
             const data = await response.json();
             
             if (data.success) {
                 console.log("✅ Успешно! Ключ сохранен в базу данных:", data.user);
-                // Опционально: можно вывести никнейм в меню профиля
                 document.querySelector('.drawer-user-info .name').textContent = username;
                 document.querySelector('.drawer-avatar').textContent = username.charAt(0).toUpperCase();
-            } else {
-                console.error("❌ Ошибка сервера:", data.error);
             }
         } catch (error) {
             console.error("❌ Ошибка при отправке ключа:", error);
@@ -160,13 +202,10 @@
             const sidebar = document.querySelector('.sidebar');
             
             users.forEach(user => {
-                // Себя в список контактов не добавляем
                 if (user.username === myUsername) return; 
 
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
-                
-                // Берем первую букву имени для аватарки
                 const initial = user.username.charAt(0).toUpperCase();
                 
                 chatItem.innerHTML = `
@@ -177,14 +216,20 @@
                     </div>
                 `;
                 
-                // Что будет при клике на пользователя:
-                chatItem.addEventListener('click', () => {
-                    // Меняем заголовок чата на имя собеседника
+                // ОБНОВЛЕННЫЙ КЛИК: Вычисляем секрет при выборе собеседника
+                chatItem.addEventListener('click', async () => {
                     document.querySelector('.chat-name').textContent = user.username;
+                    currentChatUser = user.username;
                     
-                    // Позже здесь мы будем вычислять "Общий секрет" (Shared Secret)
-                    console.log(`🔑 Хочу написать ${user.username}. Его публичный ключ:`, user.publicKey);
-                    alert(`В следующем шаге мы смешаем ваш приватный ключ с публичным ключом ${user.username}, чтобы создать непробиваемый шифр!`);
+                    console.log(`🔑 Вычисляем общий секрет с ${user.username}...`);
+                    
+                    // Вычисляем и сохраняем общий ключ для этого чата!
+                    currentSharedKey = await deriveSharedSecret(user.publicKey);
+                    
+                    if (currentSharedKey) {
+                        document.getElementById('messages-list').innerHTML = ''; // Очищаем чат
+                        console.log("✅ Теперь мы можем безопасно переписываться!");
+                    }
                 });
 
                 sidebar.appendChild(chatItem);
@@ -199,31 +244,24 @@
         console.log("Генерируем криптографические ключи...");
         myKeyPair = await window.crypto.subtle.generateKey(
             { name: "ECDH", namedCurve: "P-256" },
-            true, // Разрешаем экспорт ключей
+            true, 
             ["deriveKey", "deriveBits"]
         );
 
-        // Экспортируем и конвертируем публичный ключ
         const exportedPubKey = await window.crypto.subtle.exportKey("raw", myKeyPair.publicKey);
         const pubKeyArray = Array.from(new Uint8Array(exportedPubKey));
         myPublicKeyBase64 = btoa(String.fromCharCode.apply(null, pubKeyArray));
 
         console.log("Мой публичный ключ готов:", myPublicKeyBase64);
 
-        // 3. Спрашиваем никнейм при входе на сайт
         myUsername = prompt("Введите ваш никнейм для входа в чат:", "Vadim") || "Аноним";
         
-        // 4. Отправляем всё это добро в нашу базу данных!
         await registerUserOnServer(myUsername, myPublicKeyBase64);
-        
-        // 5. Загружаем список собеседников!
         await loadUsers();
     }
 
     // Запускаем процесс при открытии страницы
     generateKeys();
-
-    // --- ЛОГИКА СОКЕТОВ ---
 
     // --- ЛОГИКА СОКЕТОВ ---
     const socket = io();
