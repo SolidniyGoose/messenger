@@ -263,16 +263,77 @@
     // Запускаем процесс при открытии страницы
     generateKeys();
 
-    // --- ЛОГИКА СОКЕТОВ ---
+    // --- ЛОГИКА СОКЕТОВ И ШИФРОВАНИЯ ---
     const socket = io();
     const messageInput = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-btn');
     const messagesList = document.getElementById('messages-list');
 
-    function sendMessage() {
+    // --- 1. ФУНКЦИИ ШИФРОВАНИЯ (AES-GCM) ---
+    async function encryptMessage(text, key) {
+        const encoded = new TextEncoder().encode(text);
+        const iv = window.crypto.getRandomValues(new Uint8Array(12)); // Вектор инициализации
+        const ciphertext = await window.crypto.subtle.encrypt(
+            { name: "AES-GCM", iv: iv },
+            key,
+            encoded
+        );
+        return {
+            iv: window.btoa(String.fromCharCode.apply(null, new Uint8Array(iv))),
+            ciphertext: window.btoa(String.fromCharCode.apply(null, new Uint8Array(ciphertext)))
+        };
+    }
+
+    async function decryptMessage(encryptedData, key) {
+        try {
+            const iv = base64ToArrayBuffer(encryptedData.iv);
+            const ciphertext = base64ToArrayBuffer(encryptedData.ciphertext);
+            const decrypted = await window.crypto.subtle.decrypt(
+                { name: "AES-GCM", iv: iv },
+                key,
+                ciphertext
+            );
+            return new TextDecoder().decode(decrypted);
+        } catch (e) {
+            return null; // Если расшифровать не вышло (ключи не совпали)
+        }
+    }
+
+    // --- 2. ОТРИСОВКА СООБЩЕНИЙ ---
+    function displayMessage(text, className) {
+        const msgDiv = document.createElement('div');
+        const timeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        msgDiv.className = `message ${className}`;
+        msgDiv.innerHTML = `${text} <span class="meta">${timeString}</span>`;
+        messagesList.appendChild(msgDiv);
+        messagesList.scrollTop = messagesList.scrollHeight;
+    }
+
+    // --- 3. ОТПРАВКА СООБЩЕНИЯ ---
+    async function sendMessage() {
         const text = messageInput.value.trim();
+        
+        if (!currentSharedKey || !currentChatUser) {
+            alert("Сначала выберите собеседника слева!");
+            return;
+        }
+
         if (text) {
-            socket.emit('send_message', { text: text });
+            // ШИФРУЕМ текст нашим общим с собеседником секретом
+            const encryptedData = await encryptMessage(text, currentSharedKey);
+
+            // Упаковываем в "конверт"
+            const payload = {
+                sender: myUsername,
+                recipient: currentChatUser,
+                secretBox: encryptedData
+            };
+
+            // Отправляем серверу. Сервер увидит только непонятную строку JSON с шифром.
+            socket.emit('send_message', { text: JSON.stringify(payload) });
+
+            // Рисуем сообщение у себя (себе же расшифровывать не нужно)
+            displayMessage(text, 'my-message');
             messageInput.value = '';
             
             if (window.innerWidth > 768) {
@@ -286,23 +347,33 @@
         if (e.key === 'Enter') sendMessage();
     });
 
-    socket.on('receive_message', (data) => {
-        const msgDiv = document.createElement('div');
-        const timeString = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    // --- 4. ПОЛУЧЕНИЕ СООБЩЕНИЯ ---
+    socket.on('receive_message', async (data) => {
+        try {
+            // Пытаемся вскрыть "конверт"
+            const payload = JSON.parse(data.text);
 
-        if (data.senderId === socket.id) {
-            msgDiv.className = 'message my-message';
-        } else {
-            msgDiv.className = 'message other-message';
+            // Если сообщение от нас самих (ретрансляция сервера) - игнорируем
+            if (payload.sender === myUsername) return;
+
+            // Если письмо адресовано НЕ НАМ - игнорируем (Вадим не прочитает письма Алисе)
+            if (payload.recipient !== myUsername) return;
+
+            // Если письмо нам, но мы сейчас в другом чате - игнорируем 
+            // (В будущем тут можно добавить звуковой сигнал или счетчик непрочитанных)
+            if (payload.sender !== currentChatUser) return;
+
+            // РАСШИФРОВЫВАЕМ!
+            const decryptedText = await decryptMessage(payload.secretBox, currentSharedKey);
+            
+            if (decryptedText) {
+                displayMessage(decryptedText, 'other-message');
+            } else {
+                console.error("Не удалось расшифровать сообщение!");
+            }
+        } catch (e) {
+            console.log("Игнорируем техническое или системное сообщение от сервера.");
         }
-
-        msgDiv.innerHTML = `
-            ${data.text}
-            <span class="meta">${timeString}</span>
-        `;
-
-        messagesList.appendChild(msgDiv);
-        messagesList.scrollTop = messagesList.scrollHeight;
     });
 </script>
 
