@@ -34,6 +34,7 @@ router.get('/', async (req, res) => {
         });
         res.json(users);
     } catch (error) {
+        console.error("ОШИБКА БД:", error); // <-- Добавьте эту строку
         res.status(500).json({ error: "Ошибка получения списка" });
     }
 });
