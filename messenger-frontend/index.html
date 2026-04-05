@@ -81,6 +81,10 @@
     </div>
 </div>
 
+<div id="image-viewer">
+    <img src="" alt="Full screen preview">
+</div>
+
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 <script>
     // --- ЛОГИКА ИНТЕРФЕЙСА (МЕНЮ И ТЕМА) ---
@@ -437,9 +441,11 @@
             try {
                 // Пытаемся расшифровать сейф
                 const encData = JSON.parse(userOnServer.encryptedPrivKey);
-                const privKeyJsonString = await decryptMessage(encData, kek);
                 
-                if (!privKeyJsonString) throw new Error("bad_password");
+                // ИСПРАВЛЕНИЕ: Теперь функция возвращает байты, переводим их обратно в текст!
+                const decryptedBuffer = await decryptMessage(encData, kek);
+                if (!decryptedBuffer) throw new Error("bad_password");
+                const privKeyJsonString = bufferToText(decryptedBuffer);
 
                 // Если пароль подошел - импортируем ключи в браузер!
                 myKeyPair = {
@@ -462,7 +468,10 @@
 
             // 3. Прячем приватный ключ в сейф (шифруем паролем)
             const jwkPriv = await window.crypto.subtle.exportKey("jwk", myKeyPair.privateKey);
-            const encryptedPrivKeyData = await encryptMessage(JSON.stringify(jwkPriv), kek);
+            
+            // ИСПРАВЛЕНИЕ: Переводим текстовый ключ в байты ПЕРЕД шифрованием!
+            const bufferToEncrypt = textToBuffer(JSON.stringify(jwkPriv));
+            const encryptedPrivKeyData = await encryptMessage(bufferToEncrypt, kek);
 
             // 4. Отправляем публичный ключ и сейф на сервер
             await registerUserOnServer(username, myPublicKeyBase64, JSON.stringify(encryptedPrivKeyData));
@@ -754,8 +763,5 @@
         } catch (e) { console.error("Ошибка пакета", e); }
     });
 </script>
-<div id="image-viewer">
-        <img src="" alt="Full screen preview">
-    </div>
 </body>
 </html>
