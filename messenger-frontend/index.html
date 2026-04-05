@@ -252,10 +252,12 @@
         const pubKeyArray = Array.from(new Uint8Array(exportedPubKey));
         myPublicKeyBase64 = btoa(String.fromCharCode.apply(null, pubKeyArray));
 
-        console.log("Мой публичный ключ готов:", myPublicKeyBase64);
+        console.log("Мой публичный ключ готов:");
 
-        myUsername = prompt("Введите ваш никнейм для входа в чат:", "Vadim") || "Аноним";
+        myUsername = prompt("Введите ваш никнейм для входа в чат:", "Аноним");
         
+        socket.emit('register_user', myUsername);
+
         await registerUserOnServer(myUsername, myPublicKeyBase64);
         await loadUsers();
     }
@@ -265,6 +267,15 @@
 
     // --- ЛОГИКА СОКЕТОВ И ШИФРОВАНИЯ ---
     const socket = io();
+    
+    // Как только сокет подключился, сообщаем серверу свой никнейм
+    socket.on('connect', () => {
+        if (myUsername) {
+            socket.emit('register_user', myUsername);
+        }
+    });
+
+    
     const messageInput = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-btn');
     const messagesList = document.getElementById('messages-list');
@@ -350,29 +361,24 @@
     // --- 4. ПОЛУЧЕНИЕ СООБЩЕНИЯ ---
     socket.on('receive_message', async (data) => {
         try {
-            // Пытаемся вскрыть "конверт"
             const payload = JSON.parse(data.text);
 
-            // Если сообщение от нас самих (ретрансляция сервера) - игнорируем
-            if (payload.sender === myUsername) return;
+            // Если письмо пришло от того, с кем мы сейчас НЕ в чате
+            if (payload.sender !== currentChatUser) {
+                console.log(`Вам скрытое сообщение от ${payload.sender}. Переключитесь на чат с ним.`);
+                return;
+            }
 
-            // Если письмо адресовано НЕ НАМ - игнорируем (Вадим не прочитает письма Алисе)
-            if (payload.recipient !== myUsername) return;
-
-            // Если письмо нам, но мы сейчас в другом чате - игнорируем 
-            // (В будущем тут можно добавить звуковой сигнал или счетчик непрочитанных)
-            if (payload.sender !== currentChatUser) return;
-
-            // РАСШИФРОВЫВАЕМ!
+            // РАСШИФРОВЫВАЕМ (AES-GCM сам проверит подлинность)
             const decryptedText = await decryptMessage(payload.secretBox, currentSharedKey);
             
             if (decryptedText) {
                 displayMessage(decryptedText, 'other-message');
             } else {
-                console.error("Не удалось расшифровать сообщение!");
+                console.error("Взлом или несовпадение ключей! Сообщение уничтожено.");
             }
         } catch (e) {
-            console.log("Игнорируем техническое или системное сообщение от сервера.");
+            console.error("Ошибка обработки пакета", e);
         }
     });
 </script>
