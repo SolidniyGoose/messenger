@@ -629,55 +629,49 @@
         }
     }
 
-    // --- ПЕРЕМЕННЫЕ ДЛЯ КЛИКАБЕЛЬНЫХ ФОТО ---
+    // --- ПЕРЕМЕННЫЕ И ЛОГИКА ПРОСМОТРА ФОТО (TELEGRAM STYLE) ---
     const imageViewer = document.getElementById('image-viewer');
     const viewerContainer = imageViewer.querySelector('.viewer-img-container');
     const imageViewerImg = viewerContainer.querySelector('img');
 
-    let currentScale = 1; // Текущий масштаб
-    const scaleFactor = 1.1; // Коэффициент масштабирования (умножение при прокрутке)
-    const minScale = 0.5; // Минимальный масштаб
-    const maxScale = 5; // Максимальный масштаб
+    let currentScale = 1;
+    const scaleFactor = 1.15; // Чуть ускорили зум для приятности
+    const minScale = 0.5;
+    const maxScale = 5;
 
-    // Функция для применения текущего масштаба к контейнеру
     function applyScale() {
         viewerContainer.style.transform = `scale(${currentScale})`;
     }
 
-    // Хелпер для открытия фото
+    // Открытие фото
     function viewImage(src) {
         imageViewerImg.src = src;
-        currentScale = 1; // Сброс масштаба при открытии
+        currentScale = 1; // Сброс зума
         applyScale();
         imageViewer.classList.add('show');
     }
     
-    // Закрытие по клику (в любом месте окна)
-    imageViewer.addEventListener('click', () => {
-        imageViewer.classList.remove('show');
-        setTimeout(() => imageViewerImg.src = '', 300); // Очистка после скрытия
+    // Закрытие по клику на фон (не на саму картинку)
+    imageViewer.addEventListener('click', (e) => {
+        if (e.target === imageViewer || e.target === viewerContainer) {
+            imageViewer.classList.remove('show');
+            // Очищаем картинку после того, как она исчезнет
+            setTimeout(() => { imageViewerImg.src = ''; }, 300);
+        }
     });
 
-    // Обработчик масштабирования колёсиком мыши
+    // Зум колесиком мыши
     imageViewer.addEventListener('wheel', (e) => {
-        // e.deltaY отрицательный при прокрутке вверх, положительный - вниз
+        e.preventDefault();
         const direction = e.deltaY < 0 ? 1 : -1;
-        
-        // Вычисляем новый масштаб
         let newScale = currentScale * (direction > 0 ? scaleFactor : 1/scaleFactor);
         
-        // Ограничиваем масштаб
         newScale = Math.max(minScale, Math.min(maxScale, newScale));
-        
         currentScale = newScale;
         applyScale();
-        
-        // Предотвращаем стандартное поведение (прокрутку страницы)
-        e.preventDefault();
-    }, { passive: false }); // Важно для предотвращения прокрутки страницы
+    }, { passive: false });
 
-
-    // Закрытие по клавише Esc
+    // Закрытие по Esc
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && imageViewer.classList.contains('show')) {
             imageViewer.classList.remove('show');
