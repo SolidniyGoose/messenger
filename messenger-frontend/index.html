@@ -651,10 +651,11 @@
         imageViewer.classList.add('show');
     }
     
-    // Закрытие по клику на размытый фон
     imageViewer.addEventListener('click', (e) => {
+        // Если кликнули именно по фону, а не по самой картинке
         if (e.target === imageViewer || e.target === viewerContainer) {
             imageViewer.classList.remove('show');
+            // Очищаем src, чтобы при следующем открытии не моргало старое фото
             setTimeout(() => { imageViewerImg.src = ''; }, 300);
         }
     });

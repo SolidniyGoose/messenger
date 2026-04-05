@@ -247,16 +247,19 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     .drawer-header { border-radius: 0; }
 }
 
-/* --- TELEGRAM-STYLE IMAGE VIEWER --- */
+/* --- TELEGRAM-STYLE IMAGE VIEWER (ПОВЕРХ ВСЕГО) --- */
 #image-viewer {
     display: none; 
-    position: fixed; 
+    position: fixed; /* Фиксируем относительно экрана, а не чата */
     top: 0; 
     left: 0; 
     width: 100vw; 
     height: 100vh;
-    background: rgba(0, 0, 0, 0.7); /* Полупрозрачный темный фон */
-    z-index: 10000;
+    background: rgba(0, 0, 0, 0.7); 
+    
+    /* Устанавливаем самый высокий приоритет */
+    z-index: 20000; 
+    
     justify-content: center; 
     align-items: center;
     opacity: 0; 
@@ -264,7 +267,7 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     cursor: zoom-out;
     overflow: hidden;
 
-    /* ЭФФЕКТ РАЗМЫТИЯ ЗАДНЕГО ПЛАНА */
+    /* Эффект размытия заднего фона */
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
 }
@@ -283,7 +286,7 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     transition: transform 0.1s ease-out; 
     transform-origin: center center;
     border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+    box-shadow: 0 10px 50px rgba(0,0,0,0.8);
 }
 
 #image-viewer img {
@@ -292,5 +295,6 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     border-radius: 12px; 
     display: block;
     user-select: none;
-    background: transparent; /* Убираем белый фон контейнера */
 }
+
+/* ВАЖНО: Удали все лишние скобки "}" после этого места! */
