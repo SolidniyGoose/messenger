@@ -12,6 +12,7 @@
         <h2 style="margin-top: 0; color: var(--text-main);">E2EE Мессенджер</h2>
         <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 25px;">Ключи шифрования хранятся только на вашем устройстве</p>
         <input type="text" id="auth-username-input" placeholder="Ваш никнейм" autocomplete="off" style="width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 12px; font-size: 16px; background: var(--input-bg); color: var(--text-main); outline: none;">
+        <input type="password" id="auth-password-input" placeholder="Пароль (для шифрования ключей)" autocomplete="off" style="width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 12px; font-size: 16px; background: var(--input-bg); color: var(--text-main); outline: none;">
         <button id="auth-submit-btn" style="width: 100%; padding: 14px; background: var(--gradient-primary); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; transition: opacity 0.2s;">Войти / Создать</button>
     </div>
 </div>
@@ -181,12 +182,13 @@
     }
 
     // 1. Функция: отправляет ключ на сервер
-    async function registerUserOnServer(username, publicKeyBase64) {
+    async function registerUserOnServer(username, publicKeyBase64, encryptedPrivKeyBase64) {
         try {
             const response = await fetch('/api/users/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: username, publicKey: publicKeyBase64 })
+                // ТЕПЕРЬ МЫ ОТПРАВЛЯЕМ СЕЙФ НА СЕРВЕР:
+                body: JSON.stringify({ username: username, publicKey: publicKeyBase64, encryptedPrivKey: encryptedPrivKeyBase64 })
             });
 
             const data = await response.json();
@@ -328,48 +330,144 @@
     }
 
     // Запускаем процесс при открытии страницы
+    // --- МАГИЯ PBKDF2: Превращаем пароль в сверхнадежный ключ ---
+    async function deriveKeyFromPassword(password, saltString) {
+        const enc = new TextEncoder();
+        const keyMaterial = await window.crypto.subtle.importKey(
+            "raw", enc.encode(password), { name: "PBKDF2" }, false, ["deriveBits", "deriveKey"]
+        );
+        return window.crypto.subtle.deriveKey(
+            { name: "PBKDF2", salt: enc.encode(saltString), iterations: 100000, hash: "SHA-256" },
+            keyMaterial, { name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]
+        );
+    }
+
+    // --- НОВАЯ СИСТЕМА ЛОГИНА И РЕГИСТРАЦИИ ---
+    async function loginOrRegister(username, password) {
+        console.log("🔐 Проверяем пользователя на сервере...");
+        
+        // 1. Создаем ключ-отмычку из пароля
+        const kek = await deriveKeyFromPassword(password, username);
+        
+        // 2. Ищем пользователя в БД
+        const res = await fetch(`/api/users/${username}`);
+        const userOnServer = await res.json();
+
+        if (userOnServer && userOnServer.encryptedPrivKey) {
+            console.log("📥 Пользователь найден! Взламываем сейф вашим паролем...");
+            try {
+                // Пытаемся расшифровать сейф
+                const encData = JSON.parse(userOnServer.encryptedPrivKey);
+                const privKeyJsonString = await decryptMessage(encData, kek);
+                
+                if (!privKeyJsonString) throw new Error("bad_password");
+
+                // Если пароль подошел - импортируем ключи в браузер!
+                myKeyPair = {
+                    privateKey: await window.crypto.subtle.importKey("jwk", JSON.parse(privKeyJsonString), { name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"]),
+                    publicKey: await window.crypto.subtle.importKey("raw", base64ToArrayBuffer(userOnServer.publicKey), { name: "ECDH", namedCurve: "P-256" }, true, [])
+                };
+                myPublicKeyBase64 = userOnServer.publicKey;
+                console.log("✅ Успешный вход! Ключи восстановлены из сервера.");
+                
+            } catch (e) {
+                alert("❌ Неверный пароль!");
+                return false;
+            }
+        } else {
+            console.log("🆕 Новый пользователь! Генерируем ключи...");
+            myKeyPair = await window.crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"]);
+            
+            const exportedPubKey = await window.crypto.subtle.exportKey("raw", myKeyPair.publicKey);
+            myPublicKeyBase64 = btoa(String.fromCharCode.apply(null, new Uint8Array(exportedPubKey)));
+
+            // 3. Прячем приватный ключ в сейф (шифруем паролем)
+            const jwkPriv = await window.crypto.subtle.exportKey("jwk", myKeyPair.privateKey);
+            const encryptedPrivKeyData = await encryptMessage(JSON.stringify(jwkPriv), kek);
+
+            // 4. Отправляем публичный ключ и сейф на сервер
+            await registerUserOnServer(username, myPublicKeyBase64, JSON.stringify(encryptedPrivKeyData));
+        }
+
+        // Сохраняем в localStorage для быстрого обновления (F5) без ввода пароля
+        const jwkPriv = await window.crypto.subtle.exportKey("jwk", myKeyPair.privateKey);
+        const jwkPub = await window.crypto.subtle.exportKey("jwk", myKeyPair.publicKey);
+        localStorage.setItem('myPrivKey', JSON.stringify(jwkPriv));
+        localStorage.setItem('myPubKey', JSON.stringify(jwkPub));
+        localStorage.setItem('myUsername', username);
+        
+        myUsername = username;
+        socket.emit('register_user', myUsername);
+        
+        // Рисуем имя в меню
+        document.querySelector('.drawer-user-info .name').textContent = username;
+        document.querySelector('.drawer-avatar').textContent = username.charAt(0).toUpperCase();
+
+        await loadUsers();
+        setInterval(loadUsers, 5000); // Автообновление контактов
+        return true;
+    }
+
     // --- АВТОРИЗАЦИЯ И СТАРТ ---
     const authModal = document.getElementById('auth-modal');
     const authInput = document.getElementById('auth-username-input');
+    const authPassInput = document.getElementById('auth-password-input'); // Поле пароля
     const authBtn = document.getElementById('auth-submit-btn');
 
     const savedName = localStorage.getItem('myUsername');
     const savedPrivKey = localStorage.getItem('myPrivKey');
 
-    // МАГИЯ АВТОВХОДА: Если ключи и ник уже есть - пускаем без окна!
+    // Если ключи уже есть в памяти (после F5) - пускаем сразу!
     if (savedName && savedPrivKey) {
         authModal.style.display = "none";
-        generateKeys(); // Сразу запускаем движок
-    } else if (savedName) {
-        authInput.value = savedName; 
+        
+        // Быстро восстанавливаем личность из памяти
+        myUsername = savedName;
+        const storedPub = localStorage.getItem('myPubKey');
+        
+        window.crypto.subtle.importKey("jwk", JSON.parse(savedPrivKey), { name: "ECDH", namedCurve: "P-256" }, true, ["deriveKey", "deriveBits"])
+            .then(priv => {
+                myKeyPair = { privateKey: priv };
+                return window.crypto.subtle.importKey("jwk", JSON.parse(storedPub), { name: "ECDH", namedCurve: "P-256" }, true, []);
+            })
+            .then(pub => {
+                myKeyPair.publicKey = pub;
+                return window.crypto.subtle.exportKey("raw", pub);
+            })
+            .then(rawPub => {
+                myPublicKeyBase64 = btoa(String.fromCharCode.apply(null, new Uint8Array(rawPub)));
+                socket.emit('register_user', myUsername);
+                document.querySelector('.drawer-user-info .name').textContent = myUsername;
+                document.querySelector('.drawer-avatar').textContent = myUsername.charAt(0).toUpperCase();
+                loadUsers();
+                setInterval(loadUsers, 5000);
+            });
     }
 
+    // Обработка кнопки "Войти"
     authBtn.addEventListener('click', async () => {
         const enteredName = authInput.value.trim();
-        if (!enteredName) return alert("Введите никнейм!");
+        const enteredPass = authPassInput.value.trim();
         
-        if (savedName && savedName !== enteredName) {
-            localStorage.removeItem('myPrivKey');
-            localStorage.removeItem('myPubKey');
-        }
+        if (!enteredName || !enteredPass) return alert("Введите никнейм и пароль!");
 
-        authBtn.textContent = "Создаем ключи...";
+        authBtn.textContent = "Расшифровка...";
         authBtn.style.opacity = "0.7";
         
-        localStorage.setItem('myUsername', enteredName);
+        const success = await loginOrRegister(enteredName, enteredPass);
         
-        await generateKeys(); 
-        
-        authModal.style.opacity = "0";
-        setTimeout(() => authModal.style.display = "none", 500);
+        if (success) {
+            authModal.style.opacity = "0";
+            setTimeout(() => authModal.style.display = "none", 500);
+        } else {
+            authBtn.textContent = "Войти / Создать";
+            authBtn.style.opacity = "1";
+        }
     });
 
-    authInput.addEventListener('keypress', (e) => {
+    authPassInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') authBtn.click();
     });
-    
-    // В функции generateKeys() удалите строку с prompt(), она больше не нужна!
-
     // --- ЛОГИКА СОКЕТОВ И ШИФРОВАНИЯ ---
     const socket = io();
     

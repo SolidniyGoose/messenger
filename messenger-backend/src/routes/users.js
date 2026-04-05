@@ -3,22 +3,20 @@ const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-// Эндпоинт для регистрации или обновления ключа
+// 1. РЕГИСТРАЦИЯ ИЛИ ОБНОВЛЕНИЕ КЛЮЧЕЙ
 router.post('/register', async (req, res) => {
-    const { username, publicKey } = req.body;
+    const { username, publicKey, encryptedPrivKey } = req.body;
     
-    if (!username || !publicKey) {
-        return res.status(400).json({ error: "Нужен никнейм и ключ!" });
+    if (!username || !publicKey || !encryptedPrivKey) {
+        return res.status(400).json({ error: "Нужны все данные!" });
     }
 
     try {
-        // upsert: если пользователь есть - обновляем ключ, если нет - создаем нового
         const user = await prisma.user.upsert({
             where: { username: username },
-            update: { publicKey: publicKey },
-            create: { username, publicKey }
+            update: { publicKey, encryptedPrivKey },
+            create: { username, publicKey, encryptedPrivKey }
         });
-        
         res.json({ success: true, user });
     } catch (error) {
         console.error("Ошибка БД:", error);
@@ -26,20 +24,27 @@ router.post('/register', async (req, res) => {
     }
 });
 
-// Эндпоинт для получения списка всех пользователей
+// 2. ПОЛУЧЕНИЕ ДАННЫХ КОНКРЕТНОГО ПОЛЬЗОВАТЕЛЯ (ДЛЯ ВХОДА)
+router.get('/:username', async (req, res) => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { username: req.params.username }
+        });
+        res.json(user || { error: "Не найден" });
+    } catch (error) {
+        res.status(500).json({ error: "Ошибка БД" });
+    }
+});
+
+// 3. СПИСОК КОНТАКТОВ (Без раздачи чужих приватных ключей!)
 router.get('/', async (req, res) => {
     try {
         const users = await prisma.user.findMany({
-            select: { id: true, username: true, publicKey: true } 
+            select: { id: true, username: true, publicKey: true } // Сейфы не отдаем в общий список
         });
         res.json(users);
     } catch (error) {
-        // Отправляем всю подноготную ошибки прямо на экран!
-        res.status(500).json({ 
-            error: "Ошибка получения списка", 
-            details: error.message,
-            name: error.name
-        });
+        res.status(500).json({ error: "Ошибка получения списка" });
     }
 });
 
