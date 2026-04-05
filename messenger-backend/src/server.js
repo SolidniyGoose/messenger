@@ -10,7 +10,7 @@ const app = express();
 const server = http.createServer(app);
 
 app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 const usersRoutes = require('./routes/users');
 app.use('/api/users', usersRoutes);
@@ -34,7 +34,14 @@ app.get('/api/history/:user1/:user2', async (req, res) => {
     }
 });
 
-const io = new Server(server, { cors: { origin: '*', methods: ['GET', 'POST'] } });
+// Инициализация Socket.IO с увеличенным лимитом для файлов
+const io = new Server(server, {
+    cors: {
+        origin: '*',
+        methods: ['GET', 'POST']
+    },
+    maxHttpBufferSize: 5e7 // Увеличиваем лимит до 50 Мегабайт
+});
 require('./sockets/chat')(io);
 
 const PORT = process.env.PORT || 5000;

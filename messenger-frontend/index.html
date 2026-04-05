@@ -69,6 +69,12 @@
 
     <div class="input-area-wrapper">
         <div class="input-area">
+            <input type="file" id="image-upload" accept="image/*" style="display: none;">
+            <input type="file" id="file-upload" style="display: none;">
+            
+            <label for="image-upload" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить картинку" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📷</label>
+            <label for="file-upload" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить файл" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📎</label>
+
             <input type="text" id="message-input" placeholder="Написать сообщение..." autocomplete="off">
             <button id="send-btn" aria-label="Отправить">↑</button>
         </div>
@@ -582,12 +588,35 @@
         }
     }
 
-    // --- 2. ОТРИСОВКА СООБЩЕНИЙ ---
+    // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ТЕПЕРЬ С ФАЙЛАМИ!) ---
     function displayMessage(text, className, dateObj = new Date()) {
         const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         msgDiv.className = `message ${className}`;
-        msgDiv.innerHTML = `${text} <span class="meta">${timeString}</span>`;
+
+        let innerContent = text;
+
+        // Регулярное выражение ищет наши специальные префиксы файлов
+        const fileMatch = text.match(/^(IMAGE|FILE)::(.*?)::(.*)$/);
+        
+        if (fileMatch) {
+            const type = fileMatch[1];
+            const fileName = fileMatch[2];
+            const base64Data = fileMatch[3];
+
+            if (type === 'IMAGE') {
+                innerContent = `<img src="${base64Data}" alt="${fileName}" style="max-width: 100%; border-radius: 8px; margin-bottom: 5px; cursor: pointer;" onclick="window.open('${base64Data}')" />`;
+            } else if (type === 'FILE') {
+                innerContent = `
+                    <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px; margin-bottom: 5px;">
+                        <span style="font-size: 24px;">📄</span>
+                        <a href="${base64Data}" download="${fileName}" style="color: inherit; text-decoration: none; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">${fileName}</a>
+                    </div>
+                `;
+            }
+        }
+
+        msgDiv.innerHTML = `${innerContent} <span class="meta">${timeString}</span>`;
         messagesList.appendChild(msgDiv);
         messagesList.scrollTop = messagesList.scrollHeight;
     }
@@ -626,6 +655,66 @@
     }
 
     sendBtn.addEventListener('click', sendMessage);
+    
+    // --- 5. ОТПРАВКА КАРТИНОК И ФАЙЛОВ ---
+    function readFileAsBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = error => reject(error);
+            reader.readAsDataURL(file); // Конвертируем файл в текстовую DataURL строку
+        });
+    }
+
+    async function sendFile(file, isImage) {
+        if (!currentSharedKey || !currentChatUser) {
+            alert("Сначала выберите собеседника слева!");
+            return;
+        }
+        
+        // Защита от слишком больших файлов (ограничим до 10 МБ для стабильности браузера)
+        if (file.size > 10 * 1024 * 1024) {
+            alert("Файл слишком большой! Максимальный размер 10 МБ.");
+            return;
+        }
+
+        try {
+            console.log(`⏳ Подготовка файла ${file.name}...`);
+            const base64Data = await readFileAsBase64(file);
+            
+            // Формируем секретную строку с префиксом
+            const prefix = isImage ? 'IMAGE::' : 'FILE::';
+            const textToEncrypt = `${prefix}${file.name}::${base64Data}`;
+
+            console.log(`🔒 Шифрование файла...`);
+            const encryptedData = await encryptMessage(textToEncrypt, currentSharedKey);
+
+            const payload = {
+                sender: myUsername,
+                recipient: currentChatUser,
+                secretBox: encryptedData
+            };
+
+            socket.emit('send_message', { text: JSON.stringify(payload) });
+            displayMessage(textToEncrypt, 'my-message');
+            console.log(`✅ Файл зашифрован и отправлен!`);
+        } catch (error) {
+            console.error("Ошибка при отправке файла:", error);
+            alert("Не удалось зашифровать файл.");
+        }
+    }
+
+    // Слушатели для наших новых кнопок
+    document.getElementById('image-upload').addEventListener('change', (e) => {
+        if (e.target.files[0]) sendFile(e.target.files[0], true);
+        e.target.value = ''; // Сбрасываем выбор
+    });
+
+    document.getElementById('file-upload').addEventListener('change', (e) => {
+        if (e.target.files[0]) sendFile(e.target.files[0], false);
+        e.target.value = ''; // Сбрасываем выбор
+    });
+    
     messageInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
