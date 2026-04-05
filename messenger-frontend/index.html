@@ -223,40 +223,44 @@
     }
 
     // --- 1. ФУНКЦИЯ: ОТКРЫТЬ ЧАТ С ПОЛЬЗОВАТЕЛЕМ ---
+    // --- 1. ФУНКЦИЯ: ОТКРЫТЬ ЧАТ С ПОЛЬЗОВАТЕЛЕМ ---
     async function openChatWith(user) {
-        // Закрываем модалки контактов и меню
         document.getElementById('contacts-modal').style.display = 'none';
         document.getElementById('drawer').classList.remove('open');
         document.getElementById('backdrop').classList.remove('show');
-        
-        // Для мобилок - переключаем интерфейс на экран чата
-        if (window.innerWidth <= 768) {
-            document.body.classList.add('mobile-chat-active');
-        }
+        if (window.innerWidth <= 768) document.body.classList.add('mobile-chat-active');
 
         document.querySelector('.chat-name').textContent = user.username;
         currentChatUser = user.username;
-        
-        // Сразу перерисовываем боковую панель!
-        // Если мы не общались, контакт появится в списке активных (как черновик).
         loadActiveChats(); 
         
-        console.log(`🔑 Вычисляем секрет с ${user.username}...`);
         currentSharedKey = await deriveSharedSecret(user.publicKey);
         
         if (currentSharedKey) {
             document.getElementById('messages-list').innerHTML = ''; 
-            
-            // Загружаем историю
             const histRes = await fetch(`/api/history/${myUsername}/${user.username}`);
             const history = await histRes.json();
             
             for (let msg of history) {
-                const decryptedText = await decryptMessage(msg.secretBox, currentSharedKey);
-                if (decryptedText) {
-                    const type = msg.sender === myUsername ? 'my-message' : 'other-message';
-                    displayMessage(decryptedText, type, new Date(msg.createdAt));
-                }
+                try {
+                    const box = msg.secretBox;
+                    const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                    
+                    if (decryptedBuffer) {
+                        const type = msg.sender === myUsername ? 'my-message' : 'other-message';
+                        
+                        // Если это старое сообщение (без box.type) или текст:
+                        if (!box.type || box.type === 'TEXT') {
+                            const text = bufferToText(decryptedBuffer);
+                            displayMessage(text, type, new Date(msg.createdAt), false);
+                        } else {
+                            // Если это бинарный файл из базы
+                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                            const fileUrl = URL.createObjectURL(blob);
+                            displayMessage(fileUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName);
+                        }
+                    }
+                } catch(e) { console.error("Ошибка истории", e); }
             }
         }
     }
@@ -558,16 +562,28 @@
     const sendBtn = document.getElementById('send-btn');
     const messagesList = document.getElementById('messages-list');
 
-    // --- 1. ФУНКЦИИ ШИФРОВАНИЯ (AES-GCM) ---
-    async function encryptMessage(text, key) {
-        const encoded = new TextEncoder().encode(text);
+    // --- 1. ФУНКЦИИ ШИФРОВАНИЯ (AES-GCM - BINARY MODE) ---
+    
+    // Помощник: Текст -> Байты (ArrayBuffer)
+    function textToBuffer(text) {
+        return new TextEncoder().encode(text);
+    }
+    
+    // Помощник: Байты -> Текст
+    function bufferToText(buffer) {
+        return new TextDecoder().decode(buffer);
+    }
+
+    async function encryptMessage(dataBuffer, key) {
+        // dataBuffer теперь принимает ArrayBuffer (байты файла или текста)
         const iv = window.crypto.getRandomValues(new Uint8Array(12)); // Вектор инициализации
         const ciphertext = await window.crypto.subtle.encrypt(
             { name: "AES-GCM", iv: iv },
             key,
-            encoded
+            dataBuffer
         );
         return {
+            // Конвертируем в Base64 только IV и результат шифра для JSON-конверта
             iv: window.btoa(String.fromCharCode.apply(null, new Uint8Array(iv))),
             ciphertext: window.btoa(String.fromCharCode.apply(null, new Uint8Array(ciphertext)))
         };
@@ -577,43 +593,59 @@
         try {
             const iv = base64ToArrayBuffer(encryptedData.iv);
             const ciphertext = base64ToArrayBuffer(encryptedData.ciphertext);
-            const decrypted = await window.crypto.subtle.decrypt(
+            const decryptedBuffer = await window.crypto.subtle.decrypt(
                 { name: "AES-GCM", iv: iv },
                 key,
                 ciphertext
             );
-            return new TextDecoder().decode(decrypted);
+            // Возвращаем чистые байты (ArrayBuffer)
+            return decryptedBuffer;
         } catch (e) {
-            return null; // Если расшифровать не вышло (ключи не совпали)
+            return null; 
         }
     }
 
-    // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ТЕПЕРЬ С ФАЙЛАМИ!) ---
-    function displayMessage(text, className, dateObj = new Date()) {
+    // --- ПОДГОТОВКА ДЛЯ ПРОСМОТРА ФОТО ---
+    const imageViewer = document.getElementById('image-viewer');
+    const imageViewerImg = imageViewer.querySelector('img');
+
+    function viewImage(src) {
+        imageViewerImg.src = src;
+        imageViewer.classList.add('show');
+    }
+    
+    // Закрытие окна просмотра
+    document.getElementById('image-viewer').addEventListener('click', () => {
+        imageViewer.classList.remove('show');
+        setTimeout(() => imageViewerImg.src = '', 300); 
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && imageViewer.classList.contains('show')) {
+            imageViewer.classList.remove('show');
+        }
+    });
+
+    // --- 2. ОТРИСОВКА СООБЩЕНИЙ (КЛИКАБЕЛЬНЫЕ ФОТО И ФАЙЛЫ) ---
+    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '') {
         const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         msgDiv.className = `message ${className}`;
 
-        let innerContent = text;
+        let innerContent = content;
 
-        // Регулярное выражение ищет наши специальные префиксы файлов
-        const fileMatch = text.match(/^(IMAGE|FILE)::(.*?)::(.*)$/);
-        
-        if (fileMatch) {
-            const type = fileMatch[1];
-            const fileName = fileMatch[2];
-            const base64Data = fileMatch[3];
-
-            if (type === 'IMAGE') {
-                innerContent = `<img src="${base64Data}" alt="${fileName}" style="max-width: 100%; border-radius: 8px; margin-bottom: 5px; cursor: pointer;" onclick="window.open('${base64Data}')" />`;
-            } else if (type === 'FILE') {
-                innerContent = `
-                    <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px; margin-bottom: 5px;">
-                        <span style="font-size: 24px;">📄</span>
-                        <a href="${base64Data}" download="${fileName}" style="color: inherit; text-decoration: none; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">${fileName}</a>
-                    </div>
-                `;
-            }
+        if (isImage) {
+            innerContent = `<img src="${content}" alt="${fileName}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" />`;
+            setTimeout(() => {
+                const imgNode = msgDiv.querySelector('.chat-image');
+                if (imgNode) imgNode.onclick = () => viewImage(content);
+            }, 0);
+        } else if (fileName) {
+            innerContent = `
+                <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px;">
+                    <span style="font-size: 24px;">📄</span>
+                    <a href="${content}" download="${fileName}" style="color: inherit; text-decoration: none; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">${fileName}</a>
+                </div>
+            `;
         }
 
         msgDiv.innerHTML = `${innerContent} <span class="meta">${timeString}</span>`;
@@ -621,83 +653,64 @@
         messagesList.scrollTop = messagesList.scrollHeight;
     }
 
-    // --- 3. ОТПРАВКА СООБЩЕНИЯ ---
+    // --- 3. ОТПРАВКА ОБЫЧНОГО СООБЩЕНИЯ ---
     async function sendMessage() {
         const text = messageInput.value.trim();
-        
-        if (!currentSharedKey || !currentChatUser) {
-            alert("Сначала выберите собеседника слева!");
-            return;
-        }
+        if (!currentSharedKey || !currentChatUser) return alert("Сначала выберите собеседника слева!");
 
         if (text) {
-            // ШИФРУЕМ текст нашим общим с собеседником секретом
-            const encryptedData = await encryptMessage(text, currentSharedKey);
+            const dataBuffer = textToBuffer(text);
+            const encryptedData = await encryptMessage(dataBuffer, currentSharedKey);
 
-            // Упаковываем в "конверт"
+            // ТРЮК: Прячем тип сообщения прямо в secretBox, чтобы не менять БД!
             const payload = {
                 sender: myUsername,
                 recipient: currentChatUser,
-                secretBox: encryptedData
+                secretBox: { ...encryptedData, type: 'TEXT' }
             };
 
-            // Отправляем серверу. Сервер увидит только непонятную строку JSON с шифром.
             socket.emit('send_message', { text: JSON.stringify(payload) });
-
-            // Рисуем сообщение у себя (себе же расшифровывать не нужно)
-            displayMessage(text, 'my-message');
+            displayMessage(text, 'my-message', new Date(), false); 
             messageInput.value = '';
-            
-            if (window.innerWidth > 768) {
-                messageInput.focus(); 
-            }
+            if (window.innerWidth > 768) messageInput.focus(); 
         }
     }
 
-    sendBtn.addEventListener('click', sendMessage);
-    
     // --- 5. ОТПРАВКА КАРТИНОК И ФАЙЛОВ ---
-    function readFileAsBase64(file) {
+    function readFileAsArrayBuffer(file) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result);
             reader.onerror = error => reject(error);
-            reader.readAsDataURL(file); // Конвертируем файл в текстовую DataURL строку
+            reader.readAsArrayBuffer(file); 
         });
     }
 
     async function sendFile(file, isImage) {
-        if (!currentSharedKey || !currentChatUser) {
-            alert("Сначала выберите собеседника слева!");
-            return;
-        }
-        
-        // Защита от слишком больших файлов (ограничим до 10 МБ для стабильности браузера)
-        if (file.size > 10 * 1024 * 1024) {
-            alert("Файл слишком большой! Максимальный размер 10 МБ.");
-            return;
-        }
+        if (!currentSharedKey || !currentChatUser) return alert("Сначала выберите собеседника слева!");
+        if (file.size > 10 * 1024 * 1024) return alert("Файл слишком большой! Максимальный размер 10 МБ.");
 
         try {
             console.log(`⏳ Подготовка файла ${file.name}...`);
-            const base64Data = await readFileAsBase64(file);
-            
-            // Формируем секретную строку с префиксом
-            const prefix = isImage ? 'IMAGE::' : 'FILE::';
-            const textToEncrypt = `${prefix}${file.name}::${base64Data}`;
-
-            console.log(`🔒 Шифрование файла...`);
-            const encryptedData = await encryptMessage(textToEncrypt, currentSharedKey);
+            const dataBuffer = await readFileAsArrayBuffer(file);
+            console.log(`🔒 Шифрование байтов файла...`);
+            const encryptedData = await encryptMessage(dataBuffer, currentSharedKey);
 
             const payload = {
                 sender: myUsername,
                 recipient: currentChatUser,
-                secretBox: encryptedData
+                secretBox: { 
+                    ...encryptedData, 
+                    type: isImage ? 'IMAGE' : 'FILE',
+                    fileName: file.name,
+                    mimeType: file.type 
+                }
             };
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
-            displayMessage(textToEncrypt, 'my-message');
-            console.log(`✅ Файл зашифрован и отправлен!`);
+            
+            const fileUrl = URL.createObjectURL(file);
+            displayMessage(fileUrl, 'my-message', new Date(), isImage, file.name);
         } catch (error) {
             console.error("Ошибка при отправке файла:", error);
             alert("Не удалось зашифровать файл.");
@@ -723,26 +736,26 @@
     socket.on('receive_message', async (data) => {
         try {
             const payload = JSON.parse(data.text);
+            if (payload.sender !== currentChatUser) return;
 
-            // Если письмо пришло от того, с кем мы сейчас НЕ в чате
-            if (payload.sender !== currentChatUser) {
-                console.log(`Вам скрытое сообщение от ${payload.sender}. Переключитесь на чат с ним.`);
-                return;
-            }
-
-            // РАСШИФРОВЫВАЕМ (AES-GCM сам проверит подлинность)
-            const decryptedText = await decryptMessage(payload.secretBox, currentSharedKey);
+            const box = payload.secretBox;
+            const decryptedBuffer = await decryptMessage(box, currentSharedKey);
             
-            if (decryptedText) {
-                displayMessage(decryptedText, 'other-message');
-            } else {
-                console.error("Взлом или несовпадение ключей! Сообщение уничтожено.");
+            if (decryptedBuffer) {
+                if (!box.type || box.type === 'TEXT') {
+                    const text = bufferToText(decryptedBuffer);
+                    displayMessage(text, 'other-message', new Date(), false);
+                } else {
+                    const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                    const fileUrl = URL.createObjectURL(blob);
+                    displayMessage(fileUrl, 'other-message', new Date(), box.type === 'IMAGE', box.fileName);
+                }
             }
-        } catch (e) {
-            console.error("Ошибка обработки пакета", e);
-        }
+        } catch (e) { console.error("Ошибка пакета", e); }
     });
 </script>
-
+<div id="image-viewer">
+        <img src="" alt="Full screen preview">
+    </div>
 </body>
 </html>
