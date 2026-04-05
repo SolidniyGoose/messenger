@@ -201,6 +201,11 @@
             
             const sidebar = document.querySelector('.sidebar');
             
+            // Очищаем старый список контактов (чтобы не было дубликатов при автообновлении)
+            document.querySelectorAll('.chat-mock').forEach(el => {
+                if (el.id !== 'chat-item-global') el.remove();
+            });
+            
             users.forEach(user => {
                 if (user.username === myUsername) return; 
 
@@ -216,18 +221,15 @@
                     </div>
                 `;
                 
-                // ОБНОВЛЕННЫЙ КЛИК: Вычисляем секрет при выборе собеседника
                 chatItem.addEventListener('click', async () => {
                     document.querySelector('.chat-name').textContent = user.username;
                     currentChatUser = user.username;
                     
                     console.log(`🔑 Вычисляем общий секрет с ${user.username}...`);
-                    
-                    // Вычисляем и сохраняем общий ключ для этого чата!
                     currentSharedKey = await deriveSharedSecret(user.publicKey);
                     
                     if (currentSharedKey) {
-                        document.getElementById('messages-list').innerHTML = ''; // Очищаем чат
+                        document.getElementById('messages-list').innerHTML = ''; 
                         console.log("✅ Теперь мы можем безопасно переписываться!");
                     }
                 });
@@ -239,27 +241,67 @@
         }
     }
 
-    // 2. Функция для создания пары ключей
+    // 2. Функция для создания пары ключей (ТЕПЕРЬ С ПАМЯТЬЮ!)
     async function generateKeys() {
-        console.log("Генерируем криптографические ключи...");
-        myKeyPair = await window.crypto.subtle.generateKey(
-            { name: "ECDH", namedCurve: "P-256" },
-            true, 
-            ["deriveKey", "deriveBits"]
-        );
-
-        const exportedPubKey = await window.crypto.subtle.exportKey("raw", myKeyPair.publicKey);
-        const pubKeyArray = Array.from(new Uint8Array(exportedPubKey));
-        myPublicKeyBase64 = btoa(String.fromCharCode.apply(null, pubKeyArray));
-
-        console.log("Мой публичный ключ готов:");
-
-        myUsername = prompt("Введите ваш никнейм для входа в чат:", "Аноним");
+        console.log("Проверяем криптографические ключи...");
         
-        socket.emit('register_user', myUsername);
+        // Пытаемся найти ключи в памяти браузера
+        const storedPriv = localStorage.getItem('myPrivKey');
+        const storedPub = localStorage.getItem('myPubKey');
+        const storedName = localStorage.getItem('myUsername');
 
+        if (storedPriv && storedPub && storedName) {
+            console.log("🔑 Нашли сохраненные ключи в памяти браузера! Восстанавливаем личность...");
+            myUsername = storedName;
+            
+            // Импортируем ключи обратно в крипто-движок
+            myKeyPair = {
+                privateKey: await window.crypto.subtle.importKey(
+                    "jwk", JSON.parse(storedPriv), 
+                    { name: "ECDH", namedCurve: "P-256" }, 
+                    true, ["deriveKey", "deriveBits"]
+                ),
+                publicKey: await window.crypto.subtle.importKey(
+                    "jwk", JSON.parse(storedPub), 
+                    { name: "ECDH", namedCurve: "P-256" }, 
+                    true, []
+                )
+            };
+            
+            const exportedPubKey = await window.crypto.subtle.exportKey("raw", myKeyPair.publicKey);
+            myPublicKeyBase64 = btoa(String.fromCharCode.apply(null, new Uint8Array(exportedPubKey)));
+            
+        } else {
+            console.log("Генерируем НОВЫЕ криптографические ключи...");
+            myKeyPair = await window.crypto.subtle.generateKey(
+                { name: "ECDH", namedCurve: "P-256" },
+                true, 
+                ["deriveKey", "deriveBits"]
+            );
+
+            // Сохраняем в localStorage (в формате JWK), чтобы пережить F5!
+            const jwkPriv = await window.crypto.subtle.exportKey("jwk", myKeyPair.privateKey);
+            const jwkPub = await window.crypto.subtle.exportKey("jwk", myKeyPair.publicKey);
+            localStorage.setItem('myPrivKey', JSON.stringify(jwkPriv));
+            localStorage.setItem('myPubKey', JSON.stringify(jwkPub));
+
+            const exportedPubKey = await window.crypto.subtle.exportKey("raw", myKeyPair.publicKey);
+            myPublicKeyBase64 = btoa(String.fromCharCode.apply(null, new Uint8Array(exportedPubKey)));
+            
+            myUsername = prompt("Введите ваш никнейм для входа в чат:", "Vadim") || "Аноним";
+            localStorage.setItem('myUsername', myUsername);
+        }
+
+        console.log("Мой публичный ключ готов:", myPublicKeyBase64);
+        
+        // Обязательно "знакомим" сокет с нашим именем при старте
+        socket.emit('register_user', myUsername);
         await registerUserOnServer(myUsername, myPublicKeyBase64);
+        
         await loadUsers();
+        
+        // Магия: Автоматически обновляем контакты каждые 5 секунд!
+        setInterval(loadUsers, 5000); 
     }
 
     // Запускаем процесс при открытии страницы
