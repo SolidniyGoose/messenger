@@ -635,7 +635,7 @@
     const imageViewerImg = viewerContainer.querySelector('img');
 
     let currentScale = 1;
-    const scaleFactor = 1.15; // Чуть ускорили зум для приятности
+    const scaleFactor = 1.15;
     const minScale = 0.5;
     const maxScale = 5;
 
@@ -646,16 +646,15 @@
     // Открытие фото
     function viewImage(src) {
         imageViewerImg.src = src;
-        currentScale = 1; // Сброс зума
+        currentScale = 1; 
         applyScale();
         imageViewer.classList.add('show');
     }
     
-    // Закрытие по клику на фон (не на саму картинку)
+    // Закрытие по клику на размытый фон
     imageViewer.addEventListener('click', (e) => {
         if (e.target === imageViewer || e.target === viewerContainer) {
             imageViewer.classList.remove('show');
-            // Очищаем картинку после того, как она исчезнет
             setTimeout(() => { imageViewerImg.src = ''; }, 300);
         }
     });
@@ -665,7 +664,6 @@
         e.preventDefault();
         const direction = e.deltaY < 0 ? 1 : -1;
         let newScale = currentScale * (direction > 0 ? scaleFactor : 1/scaleFactor);
-        
         newScale = Math.max(minScale, Math.min(maxScale, newScale));
         currentScale = newScale;
         applyScale();

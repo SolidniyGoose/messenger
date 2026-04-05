@@ -233,25 +233,21 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 /* --- АДАПТИВНОСТЬ --- */
 @media (max-width: 768px) {
     .sidebar, .chat-area { margin: 0; border-radius: 0; box-shadow: none; width: 100%; border: none; }
-    
     .sidebar { display: flex; }
     .chat-area { display: none; }
-    
     body.mobile-chat-active .sidebar { display: none; }
     body.mobile-chat-active .chat-area { display: flex; }
-
     .back-btn { display: flex; }
-
     .messages { padding: 15px 4%; gap: 8px; }
     .input-area-wrapper { padding: 10px 4%; }
     .message { max-width: 85%; padding: 8px 14px; border-radius: 16px; }
     .my-message { border-bottom-right-radius: 4px; }
     .other-message { border-bottom-left-radius: 4px; }
-    
     .drawer { border-radius: 0; width: 270px; }
     .drawer-header { border-radius: 0; }
-} /* <--- ЭТА СКОБКА ЗАКРЫВАЕТ @media, ОНА ОЧЕНЬ ВАЖНА! */
-/* --- СТИЛЬ ПРОСМОТРА ФОТО В СТИЛЕ TELEGRAM --- */
+}
+
+/* --- TELEGRAM-STYLE IMAGE VIEWER --- */
 #image-viewer {
     display: none; 
     position: fixed; 
@@ -259,7 +255,7 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     left: 0; 
     width: 100vw; 
     height: 100vh;
-    background: rgba(0, 0, 0, 0.7); /* Полупрозрачный черный */
+    background: rgba(0, 0, 0, 0.7); /* Полупрозрачный темный фон */
     z-index: 10000;
     justify-content: center; 
     align-items: center;
@@ -268,7 +264,7 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     cursor: zoom-out;
     overflow: hidden;
 
-    /* МАГИЯ РАЗМЫТИЯ ФОНА */
+    /* ЭФФЕКТ РАЗМЫТИЯ ЗАДНЕГО ПЛАНА */
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
 }
@@ -278,7 +274,7 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     opacity: 1; 
 }
 
-#image-viewer .viewer-img-container {
+.viewer-img-container {
     display: flex; 
     justify-content: center; 
     align-items: center;
@@ -296,4 +292,5 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     border-radius: 12px; 
     display: block;
     user-select: none;
+    background: transparent; /* Убираем белый фон контейнера */
 }
