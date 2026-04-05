@@ -1,5 +1,7 @@
 // Справочник: Никнейм -> ID Сокета
-const onlineUsers = new Map(); 
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+const onlineUsers = new Map();
 
 module.exports = (io) => {
     io.on('connection', (socket) => {
@@ -12,21 +14,23 @@ module.exports = (io) => {
         });
 
         // 2. Обработка зашифрованных сообщений
-        socket.on('send_message', (data) => {
+        socket.on('send_message', async (data) => {
             try {
-                // Сервер читает только "конверт"
                 const payload = JSON.parse(data.text);
-                
-                // Ищем сокет получателя
                 const recipientSocketId = onlineUsers.get(payload.recipient);
 
+                // 1. СОХРАНЯЕМ В БАЗУ ДАННЫХ (в зашифрованном виде!)
+                await prisma.message.create({
+                    data: {
+                        sender: payload.sender,
+                        recipient: payload.recipient,
+                        secretBox: payload.secretBox // Сервер сохраняет это как JSON, не пытаясь прочитать
+                    }
+                });
+
+                // 2. Отправляем получателю, если он онлайн
                 if (recipientSocketId) {
-                    // Отправляем ТОЛЬКО адресату! Больше никакого бродкаста.
                     io.to(recipientSocketId).emit('receive_message', data);
-                    console.log(`✉️ Зашифрованный пакет ушел: ${payload.sender} -> ${payload.recipient}`);
-                } else {
-                    console.log(`⚠️ Сообщение не доставлено: ${payload.recipient} не в сети.`);
-                    // Здесь можно добавить логику сохранения в БД для офлайн-доставки
                 }
             } catch (e) {
                 console.error("Ошибка маршрутизации сообщения:", e);
