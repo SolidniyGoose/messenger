@@ -585,24 +585,34 @@
         return new TextDecoder().decode(buffer);
     }
 
+    // --- Помощник: Безопасная конвертация больших файлов в Base64 ---
+    // Разбивает массив на кусочки по 8 КБ, чтобы браузер не сошел с ума от переполнения памяти
+    function bufferToBase64(buffer) {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 8192; 
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+        }
+        return window.btoa(binary);
+    }
+
     async function encryptMessage(dataBuffer, key) {
-        // ИСПРАВЛЕНИЕ: Генерируем IV более эффективно
-        // Вместо создания огромного IV, мы используем небольшой буфер
-        // и заполняем его случайными значениями. Это предотвращает RangeError.
         const iv = new Uint8Array(12);
-        await window.crypto.getRandomValues(iv);
+        window.crypto.getRandomValues(iv); // Вызываем синхронно, без await
 
         const ciphertext = await window.crypto.subtle.encrypt(
             { name: "AES-GCM", iv: iv },
             key,
             dataBuffer
         );
+        
         return {
-            iv: window.btoa(String.fromCharCode.apply(null, new Uint8Array(iv))),
-            ciphertext: window.btoa(String.fromCharCode.apply(null, new Uint8Array(ciphertext)))
+            // ИСПОЛЬЗУЕМ НАШ НОВЫЙ БЕЗОПАСНЫЙ ПОМОЩНИК
+            iv: bufferToBase64(iv),
+            ciphertext: bufferToBase64(ciphertext) 
         };
     }
-
     async function decryptMessage(encryptedData, key) {
         try {
             const iv = base64ToArrayBuffer(encryptedData.iv);
