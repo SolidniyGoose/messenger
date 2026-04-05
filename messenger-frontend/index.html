@@ -120,6 +120,7 @@
     // --- КРИПТОГРАФИЯ (Web Crypto API) ---
     let myKeyPair = null;
     let myPublicKeyBase64 = null;
+    let myUsername = null; // <--- ДОБАВИЛИ ЭТУ СТРОЧКУ
 
     // 1. Новая функция: отправляет ключ на сервер
     async function registerUserOnServer(username, publicKeyBase64) {
@@ -150,6 +151,49 @@
         }
     }
 
+    // Функция для загрузки списка пользователей с сервера
+    async function loadUsers() {
+        try {
+            const response = await fetch('/api/users');
+            const users = await response.json();
+            
+            const sidebar = document.querySelector('.sidebar');
+            
+            users.forEach(user => {
+                // Себя в список контактов не добавляем
+                if (user.username === myUsername) return; 
+
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-mock';
+                
+                // Берем первую букву имени для аватарки
+                const initial = user.username.charAt(0).toUpperCase();
+                
+                chatItem.innerHTML = `
+                    <div class="avatar">${initial}</div>
+                    <div class="chat-info">
+                        <div style="font-weight: 600; font-size: 15px;">${user.username}</div>
+                        <div style="font-size: 13px; opacity: 0.9;">Нажмите для E2EE чата</div>
+                    </div>
+                `;
+                
+                // Что будет при клике на пользователя:
+                chatItem.addEventListener('click', () => {
+                    // Меняем заголовок чата на имя собеседника
+                    document.querySelector('.chat-name').textContent = user.username;
+                    
+                    // Позже здесь мы будем вычислять "Общий секрет" (Shared Secret)
+                    console.log(`🔑 Хочу написать ${user.username}. Его публичный ключ:`, user.publicKey);
+                    alert(`В следующем шаге мы смешаем ваш приватный ключ с публичным ключом ${user.username}, чтобы создать непробиваемый шифр!`);
+                });
+
+                sidebar.appendChild(chatItem);
+            });
+        } catch (error) {
+            console.error("❌ Ошибка загрузки пользователей:", error);
+        }
+    }
+
     // 2. Функция для создания пары ключей
     async function generateKeys() {
         console.log("Генерируем криптографические ключи...");
@@ -167,10 +211,13 @@
         console.log("Мой публичный ключ готов:", myPublicKeyBase64);
 
         // 3. Спрашиваем никнейм при входе на сайт
-        let myUsername = prompt("Введите ваш никнейм для входа в чат:", "Vadim") || "Аноним";
+        myUsername = prompt("Введите ваш никнейм для входа в чат:", "Vadim") || "Аноним";
         
         // 4. Отправляем всё это добро в нашу базу данных!
         await registerUserOnServer(myUsername, myPublicKeyBase64);
+        
+        // 5. Загружаем список собеседников!
+        await loadUsers();
     }
 
     // Запускаем процесс при открытии страницы
