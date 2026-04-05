@@ -35,7 +35,7 @@
             <span class="icon" id="theme-icon">🌙</span> 
             <span id="theme-text">Ночной режим</span>
         </li>
-        <li><span class="icon">❓</span> Помощь</li>
+        <li id="logout-btn" style="color: #ff4d4d;"><span class="icon">🚪</span> Выйти</li>
     </ul>
 </div>
 
@@ -109,6 +109,23 @@
             localStorage.setItem('theme', 'light');
             themeIcon.textContent = '🌙';
             themeText.textContent = 'Ночной режим';
+        }
+    });
+
+    // --- ЛОГИКА ВЫХОДА ИЗ АККАУНТА ---
+    const logoutBtn = document.getElementById('logout-btn');
+    
+    logoutBtn.addEventListener('click', () => {
+        // Спрашиваем подтверждение перед выходом
+        const isConfirmed = confirm("Вы уверены, что хотите выйти? Локальные ключи будут удалены с устройства.");
+        
+        if (isConfirmed) {
+            // Очищаем всё!
+            localStorage.clear();
+            
+            // Перезагружаем страницу. 
+            // Так как памяти больше нет, браузер сам покажет окно авторизации!
+            location.reload(); 
         }
     });
 
