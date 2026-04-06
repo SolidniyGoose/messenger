@@ -258,16 +258,18 @@
                         // Если это старое сообщение (без box.type) или текст:
                         if (!box.type || box.type === 'TEXT') {
                             const text = bufferToText(decryptedBuffer);
-                            displayMessage(text, type, new Date(msg.createdAt), false);
+                            displayMessage(text, type, new Date(msg.createdAt), false, '', msg.isRead);
                         } else {
                             // Если это бинарный файл из базы
                             const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                             const fileUrl = URL.createObjectURL(blob);
-                            displayMessage(fileUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName);
+                            displayMessage(fileUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
                         }
                     }
                 } catch(e) { console.error("Ошибка истории", e); }
             }
+            // СКАЗАТЬ СЕРВЕРУ, ЧТО МЫ ВСЁ ПРОЧИТАЛИ:
+            socket.emit('mark_read', { sender: user.username, recipient: myUsername });
         }
     }
 
@@ -680,7 +682,8 @@
 
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ (КЛИКАБЕЛЬНЫЕ ФОТО И ФАЙЛЫ) ---
     // Функция остается прежней, она просто подставляет Blob URL
-    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '') {
+    // --- 2. ОТРИСОВКА СООБЩЕНИЙ ---
+    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '', isRead = false) {
         const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         msgDiv.className = `message ${className}`;
@@ -688,14 +691,12 @@
         let innerContent = content;
 
         if (isImage) {
-            // ФОТО: Кликабельное, открывается в нашем новом окне
             innerContent = `<img src="${content}" alt="${fileName}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" />`;
             setTimeout(() => {
                 const imgNode = msgDiv.querySelector('.chat-image');
                 if (imgNode) imgNode.onclick = () => viewImage(content);
             }, 0);
         } else if (fileName) {
-            // ФАЙЛ: Блок для скачивания (без изменений)
             innerContent = `
                 <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px;">
                     <span style="font-size: 24px;">📄</span>
@@ -703,11 +704,16 @@
                 </div>
             `;
         } else {
-            // ТЕКСТ: Обычный текст
             msgDiv.classList.add('text-message');
         }
 
-        msgDiv.innerHTML = `${innerContent} <span class="meta">${timeString}</span>`;
+        // --- ДОБАВЛЯЕМ ГАЛОЧКИ ДЛЯ СВОИХ СООБЩЕНИЙ ---
+        let statusHtml = '';
+        if (className === 'my-message') {
+            statusHtml = `<span class="msg-status ${isRead ? 'status-read' : 'status-sent'}">${isRead ? '✓✓' : '✓'}</span>`;
+        }
+
+        msgDiv.innerHTML = `${innerContent} <span class="meta">${timeString}${statusHtml}</span>`;
         messagesList.appendChild(msgDiv);
         messagesList.scrollTop = messagesList.scrollHeight;
     }
@@ -729,7 +735,7 @@
             };
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
-            displayMessage(text, 'my-message', new Date(), false); 
+            displayMessage(text, 'my-message', new Date(), false, '', false);
             messageInput.value = '';
             if (window.innerWidth > 768) messageInput.focus(); 
         }
@@ -769,7 +775,7 @@
             socket.emit('send_message', { text: JSON.stringify(payload) });
             
             const fileUrl = URL.createObjectURL(file);
-            displayMessage(fileUrl, 'my-message', new Date(), isImage, file.name);
+            displayMessage(fileUrl, 'my-message', new Date(), isImage, file.name, false);
         } catch (error) {
             console.error("Ошибка при отправке файла:", error);
             alert("Не удалось зашифровать файл.");
@@ -809,8 +815,21 @@
                     const fileUrl = URL.createObjectURL(blob);
                     displayMessage(fileUrl, 'other-message', new Date(), box.type === 'IMAGE', box.fileName);
                 }
+                // СООБЩЕНИЕ ПРИШЛО И ЧАТ ОТКРЫТ - СРАЗУ ПОМЕЧАЕМ ПРОЧИТАННЫМ
+                socket.emit('mark_read', { sender: payload.sender, recipient: myUsername });
             }
         } catch (e) { console.error("Ошибка пакета", e); }
+    });
+
+    // --- НОВОЕ: МЕНЯЕМ ОДНУ ГАЛОЧКУ НА ДВЕ В РЕАЛЬНОМ ВРЕМЕНИ ---
+    socket.on('messages_were_read', (data) => {
+        // Если мы сейчас в чате с тем, кто прочитал наши сообщения
+        if (currentChatUser === data.by) {
+            document.querySelectorAll('.my-message .msg-status').forEach(el => {
+                el.className = 'msg-status status-read';
+                el.textContent = '✓✓';
+            });
+        }
     });
 </script>
 </body>
