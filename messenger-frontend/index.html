@@ -23,6 +23,11 @@
                 <div class="dot"></div>
                 <span id="record-time-text">0:00</span>
             </div>
+            
+            <div class="record-controls">
+                <button id="record-pause-btn" title="Пауза" class="control-btn pause">||</button>
+                <button id="record-stop-btn" title="Остановить" class="control-btn stop">■</button>
+            </div>
         </div>
     </div>
 <div id="contacts-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
@@ -115,6 +120,8 @@
     const videoRecordOverlay = document.getElementById('video-record-overlay');
     const recordPreview = document.getElementById('record-preview');
     const recordTimeText = document.getElementById('record-time-text');
+    const recordPauseBtn = document.getElementById('record-pause-btn');
+    const recordStopBtn = document.getElementById('record-stop-btn');
 
     let pressTimer = null; // Таймер для распознавания зажатия
     let isHolding = false; // Флаг, что кнопка зажата
@@ -851,6 +858,7 @@
     }
 
     // Функция СТАРТА записи
+    // Функция СТАРТА записи
     async function startRecordingCircle() {
         if (!currentSharedKey || !currentChatUser) {
             alert("Сначала выберите собеседника слева!");
@@ -860,55 +868,29 @@
 
         try {
             console.log("🎥 Запрашиваем доступ к камере и микрофону...");
-            // Запрашиваем квадратное видео для селфи-камеры
             const stream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } },
                 audio: true
             });
             
-            // Показываем предпросмотр
             recordPreview.srcObject = stream;
             videoRecordOverlay.classList.add('show');
             
             circleVideoChunks = [];
-            // Используем WebM формат (широко поддерживается, E2EE совместим)
             circleMediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
 
             circleMediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) circleVideoChunks.push(e.data);
             };
 
-            circleMediaRecorder.onstop = async () => {
+            // ОБНОВЛЕНО: Мы больше не отправляем по stop(), а делаем это по кнопке STOP
+            circleMediaRecorder.onstop = () => {
                 // Прячем оверлей
                 videoRecordOverlay.classList.remove('show');
-                
-                if (circleVideoChunks.length === 0) return;
-
-                const videoBlob = new Blob(circleVideoChunks, { type: 'video/webm' });
-                const arrayBuffer = await videoBlob.arrayBuffer();
-                
-                console.log(`🔒 Шифрование видео-кружка...`);
-                // Используем наш существующий бинарный E2EE движок!
-                const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
-
-                const payload = {
-                    sender: myUsername,
-                    recipient: currentChatUser,
-                    secretBox: { 
-                        ...encryptedData, 
-                        type: 'VIDEO_CIRCLE', // НОВЫЙ ТИП
-                        mimeType: 'video/webm'
-                    }
-                };
-
-                socket.emit('send_message', { text: JSON.stringify(payload) });
-                
-                const videoUrl = URL.createObjectURL(videoBlob);
-                // Будем рисовать, передав isCircleVideo = true в displayMessage
-                displayMessage(videoUrl, 'my-message', new Date(), false, '', false, true);
             };
 
-            circleMediaRecorder.start();
+            // Начинаем запись, сохраняя данные каждые 100мс (для паузы)
+            circleMediaRecorder.start(100); 
             isRecordingCircle = true;
             
             // Запускаем таймер
@@ -916,13 +898,16 @@
             recordTimeText.textContent = "0:00";
             circleRecordTimerInterval = setInterval(updateCircleTimer, 1000);
 
+            // Сбрасываем состояние кнопок
+            recordPauseBtn.classList.remove('paused');
+            recordPauseBtn.textContent = '||';
+
         } catch (err) {
             console.error("Ошибка камеры:", err);
-            alert("Разрешите доступ к камере и микрофону в настройках браузера!");
+            alert("Разрешите доступ к камере и микрофону!");
             isHolding = false;
         }
     }
-
     // Функция ОСТАНОВКИ записи
     function stopRecordingCircle() {
         if (!isRecordingCircle) return;
@@ -957,15 +942,11 @@
         clearTimeout(pressTimer);
         isHolding = false;
 
-        // Если шла запись кружка — останавливаем и отправляем
+        // Если шла запись кружка — МЫ БОЛЬШЕ НЕ ОСТАНАВЛИВАЕМ ЗДЕСЬ
         if (isRecordingCircle) {
-            stopRecordingCircle();
-            e.preventDefault(); // Предотвращаем клик, если это был touch
+            e.preventDefault(); 
         } else {
-            // Если продержали МЕНЬШЕ 500мс — это обычный клик.
-            // Принудительно вызываем выбор фото.
-            // e.target.click() может вызвать рекурсию на лейбле,
-            // поэтому просто кликаем сам инпут.
+            // Обычный клик
             imageInput.click();
         }
     };
@@ -1044,6 +1025,67 @@
         }
     });
     
+    // --- 8. ЛОГИКА КНОПОК УПРАВЛЕНИЯ ЗАПИСЬЮ "КРУЖОЧКОВ" ---
+
+    // Обработчик кнопки ПАУЗА/ВОЗОБНОВИТЬ
+    recordPauseBtn.addEventListener('click', () => {
+        if (!isRecordingCircle) return;
+
+        if (circleMediaRecorder.state === 'recording') {
+            circleMediaRecorder.pause();
+            recordPauseBtn.classList.add('paused');
+            recordPauseBtn.textContent = '▶'; // Меняем на иконку Play
+            clearInterval(circleRecordTimerInterval); // Ставим таймер на паузу
+        } else if (circleMediaRecorder.state === 'paused') {
+            circleMediaRecorder.resume();
+            recordPauseBtn.classList.remove('paused');
+            recordPauseBtn.textContent = '||'; // Меняем обратно на паузу
+            
+            // Корректируем время старта, чтобы таймер шел правильно
+            circleStartTime = Date.now() - (Date.now() - circleStartTime); // Упрощенная логика
+            circleRecordTimerInterval = setInterval(updateCircleTimer, 1000); // Запускаем таймер
+        }
+    });
+
+    // Обработчик кнопки СТОП И ОТПРАВИТЬ
+    recordStopBtn.addEventListener('click', async () => {
+        if (!isRecordingCircle) return;
+        
+        // Останавливаем запись
+        clearInterval(circleRecordTimerInterval);
+        circleMediaRecorder.stop();
+        // Отключаем камеру и микрофон
+        circleMediaRecorder.stream.getTracks().forEach(track => track.stop());
+        isRecordingCircle = false;
+        
+        // Ждем немного, пока все данные соберутся
+        await new Promise(resolve => setTimeout(resolve, 300));
+
+        if (circleVideoChunks.length === 0) return;
+
+        console.log(`🔒 Шифрование видео-кружка...`);
+        const videoBlob = new Blob(circleVideoChunks, { type: 'video/webm' });
+        const arrayBuffer = await videoBlob.arrayBuffer();
+        const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
+
+        const payload = {
+            sender: myUsername,
+            recipient: currentChatUser,
+            secretBox: { 
+                ...encryptedData, 
+                type: 'VIDEO_CIRCLE',
+                mimeType: 'video/webm'
+            }
+        };
+
+        socket.emit('send_message', { text: JSON.stringify(payload) });
+        
+        const videoUrl = URL.createObjectURL(videoBlob);
+        displayMessage(videoUrl, 'my-message', new Date(), false, '', false, true);
+        
+        // Прячем оверлей
+        videoRecordOverlay.classList.remove('show');
+    });
 
     // Слушатели для наших новых кнопок
     document.getElementById('image-upload').addEventListener('change', (e) => {
