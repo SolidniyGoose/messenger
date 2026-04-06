@@ -17,17 +17,22 @@
     </div>
 </div>
 <div id="video-record-overlay">
-        <div class="record-circle-container">
-            <video id="record-preview" autoplay muted playsinline></video>
-            <div id="record-timer">
-                <div class="dot"></div>
-                <span id="record-time-text">0:00</span>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 30px;">
+            
+            <div class="record-circle-container">
+                <video id="record-preview" autoplay muted playsinline></video>
+                <div id="record-timer">
+                    <div class="dot"></div>
+                    <span id="record-time-text">0:00</span>
+                </div>
             </div>
             
             <div class="record-controls">
+                <button id="record-switch-cam-btn" title="Сменить камеру" class="control-btn switch">🔄</button>
                 <button id="record-pause-btn" title="Пауза" class="control-btn pause">||</button>
                 <button id="record-stop-btn" title="Остановить" class="control-btn stop">■</button>
             </div>
+
         </div>
     </div>
 <div id="contacts-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
@@ -130,6 +135,8 @@
     let circleVideoChunks = [];
     let circleRecordTimerInterval;
     let circleStartTime;
+    const recordSwitchCamBtn = document.getElementById('record-switch-cam-btn');
+    let currentFacingMode = 'user'; // 'user' - фронтальная, 'environment' - задняя
 
     menuBtn.addEventListener('click', () => {
         drawer.classList.add('open');
@@ -868,8 +875,13 @@
 
         try {
             console.log("🎥 Запрашиваем доступ к камере и микрофону...");
+            
+            // Сбрасываем на фронталку при каждом новом кружке
+            currentFacingMode = 'user'; 
+            recordPreview.classList.add('mirrored');
+
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } },
+                video: { facingMode: currentFacingMode, width: { ideal: 640 }, height: { ideal: 640 } },
                 audio: true
             });
             
@@ -918,6 +930,42 @@
         circleMediaRecorder.stream.getTracks().forEach(track => track.stop());
         isRecordingCircle = false;
     }
+
+    // Обработчик кнопки СМЕНЫ КАМЕРЫ
+    recordSwitchCamBtn.addEventListener('click', async () => {
+        if (!isRecordingCircle) return;
+        
+        // Переключаем режим
+        const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+        
+        try {
+            // Запрашиваем ТОЛЬКО новое видео (без аудио, чтобы не прерывать запись звука)
+            const newVideoStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: newFacingMode, width: { ideal: 640 }, height: { ideal: 640 } }
+            });
+            
+            const newVideoTrack = newVideoStream.getVideoTracks()[0];
+            const currentStream = recordPreview.srcObject;
+            const oldVideoTrack = currentStream.getVideoTracks()[0];
+            
+            // Магия подмены трека "на лету"
+            currentStream.removeTrack(oldVideoTrack);
+            currentStream.addTrack(newVideoTrack);
+            oldVideoTrack.stop(); // Выключаем старую камеру
+            
+            // Применяем новый режим и отзеркаливание
+            currentFacingMode = newFacingMode;
+            if (currentFacingMode === 'user') {
+                recordPreview.classList.add('mirrored');
+            } else {
+                recordPreview.classList.remove('mirrored');
+            }
+            
+        } catch (err) {
+            console.error("Ошибка при смене камеры:", err);
+            // На ПК может не быть второй камеры, просто игнорируем
+        }
+    });
 
     // --- ОБРАБОТЧИКИ ЗАЖАТИЯ КНОПКИ (Mouse & Touch) ---
 
