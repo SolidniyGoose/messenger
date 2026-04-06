@@ -247,6 +247,16 @@ body {
 ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
 body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 
+/* --- АНИМАЦИЯ ДЛЯ ЗАПИСИ ГОЛОСА --- */
+@keyframes pulse-mic {
+    0% { transform: scale(1); color: #ff4d4d; }
+    50% { transform: scale(1.2); color: #ff0000; }
+    100% { transform: scale(1); color: #ff4d4d; }
+}
+#mic-btn.recording {
+    animation: pulse-mic 1.5s infinite;
+}
+
 /* --- АДАПТИВНОСТЬ --- */
 @media (max-width: 768px) {
     .sidebar, .chat-area { margin: 0; border-radius: 0; box-shadow: none; width: 100%; border: none; }

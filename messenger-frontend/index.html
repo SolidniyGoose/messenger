@@ -75,6 +75,8 @@
             <label for="image-upload" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить картинку" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📷</label>
             <label for="file-upload" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить файл" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📎</label>
 
+            <button id="mic-btn" style="background: none; border: none; font-size: 22px; margin-right: 10px; cursor: pointer; color: var(--text-muted); transition: 0.2s;" title="Голосовое сообщение">🎤</button>
+            
             <input type="text" id="message-input" placeholder="Написать сообщение..." autocomplete="off">
             <button id="send-btn" aria-label="Отправить">↑</button>
         </div>
@@ -256,11 +258,15 @@
                         const type = msg.sender === myUsername ? 'my-message' : 'other-message';
                         
                         // Если это старое сообщение (без box.type) или текст:
+                        // ... (внутри цикла в openChatWith) ...
                         if (!box.type || box.type === 'TEXT') {
                             const text = bufferToText(decryptedBuffer);
                             displayMessage(text, type, new Date(msg.createdAt), false, '', msg.isRead);
+                        } else if (box.type === 'AUDIO') {
+                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                            const url = URL.createObjectURL(blob);
+                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, true);
                         } else {
-                            // Если это бинарный файл из базы
                             const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                             const fileUrl = URL.createObjectURL(blob);
                             displayMessage(fileUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
@@ -683,7 +689,7 @@
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ (КЛИКАБЕЛЬНЫЕ ФОТО И ФАЙЛЫ) ---
     // Функция остается прежней, она просто подставляет Blob URL
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ ---
-    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '', isRead = false) {
+    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false) {
         const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         msgDiv.className = `message ${className}`;
@@ -696,6 +702,9 @@
                 const imgNode = msgDiv.querySelector('.chat-image');
                 if (imgNode) imgNode.onclick = () => viewImage(content);
             }, 0);
+        } else if (isAudio) {
+            // АУДИОПЛЕЕР
+            innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
         } else if (fileName) {
             innerContent = `
                 <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px;">
@@ -707,7 +716,7 @@
             msgDiv.classList.add('text-message');
         }
 
-        // --- ДОБАВЛЯЕМ ГАЛОЧКИ ДЛЯ СВОИХ СООБЩЕНИЙ ---
+        // ГАЛОЧКИ ДЛЯ СВОИХ СООБЩЕНИЙ
         let statusHtml = '';
         if (className === 'my-message') {
             statusHtml = `<span class="msg-status ${isRead ? 'status-read' : 'status-sent'}">${isRead ? '✓✓' : '✓'}</span>`;
@@ -781,6 +790,71 @@
             alert("Не удалось зашифровать файл.");
         }
     }
+    
+    // --- 6. ЗАПИСЬ И ОТПРАВКА ГОЛОСОВЫХ СООБЩЕНИЙ ---
+    const micBtn = document.getElementById('mic-btn');
+    let mediaRecorder;
+    let audioChunks = [];
+    let isRecording = false;
+
+    micBtn.addEventListener('click', async () => {
+        if (!currentSharedKey || !currentChatUser) return alert("Сначала выберите собеседника слева!");
+
+        if (!isRecording) {
+            // СТАРТ ЗАПИСИ
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+
+                mediaRecorder.ondataavailable = e => {
+                    if (e.data.size > 0) audioChunks.push(e.data);
+                };
+
+                mediaRecorder.onstop = async () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    const arrayBuffer = await audioBlob.arrayBuffer();
+                    
+                    console.log(`🔒 Шифрование голосового сообщения...`);
+                    const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
+
+                    // Упаковываем в секретный сейф с типом AUDIO
+                    const payload = {
+                        sender: myUsername,
+                        recipient: currentChatUser,
+                        secretBox: { 
+                            ...encryptedData, 
+                            type: 'AUDIO',
+                            mimeType: 'audio/webm'
+                        }
+                    };
+
+                    socket.emit('send_message', { text: JSON.stringify(payload) });
+                    
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    // Передаем isAudio = true в самом конце
+                    displayMessage(audioUrl, 'my-message', new Date(), false, '', false, true);
+                };
+
+                mediaRecorder.start();
+                isRecording = true;
+                micBtn.classList.add('recording');
+                micBtn.textContent = '🛑'; // Меняем иконку на стоп
+            } catch (err) {
+                console.error("Ошибка микрофона:", err);
+                alert("Разрешите доступ к микрофону в настройках браузера!");
+            }
+        } else {
+            // ОСТАНОВКА И ОТПРАВКА
+            mediaRecorder.stop();
+            // Отключаем микрофон, чтобы красная точка в браузере пропала
+            mediaRecorder.stream.getTracks().forEach(track => track.stop());
+            isRecording = false;
+            micBtn.classList.remove('recording');
+            micBtn.textContent = '🎤';
+        }
+    });
+    
 
     // Слушатели для наших новых кнопок
     document.getElementById('image-upload').addEventListener('change', (e) => {
@@ -810,12 +884,16 @@
                 if (!box.type || box.type === 'TEXT') {
                     const text = bufferToText(decryptedBuffer);
                     displayMessage(text, 'other-message', new Date(), false);
+                } else if (box.type === 'AUDIO') {
+                    // НОВОЕ: Обработка входящего аудио
+                    const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                    const url = URL.createObjectURL(blob);
+                    displayMessage(url, 'other-message', new Date(), false, '', false, true);
                 } else {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const fileUrl = URL.createObjectURL(blob);
                     displayMessage(fileUrl, 'other-message', new Date(), box.type === 'IMAGE', box.fileName);
                 }
-                // СООБЩЕНИЕ ПРИШЛО И ЧАТ ОТКРЫТ - СРАЗУ ПОМЕЧАЕМ ПРОЧИТАННЫМ
                 socket.emit('mark_read', { sender: payload.sender, recipient: myUsername });
             }
         } catch (e) { console.error("Ошибка пакета", e); }
