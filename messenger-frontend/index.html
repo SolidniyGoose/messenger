@@ -16,6 +16,15 @@
         <button id="auth-submit-btn" style="width: 100%; padding: 14px; background: var(--gradient-primary); color: white; border: none; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; transition: opacity 0.2s;">Войти / Создать</button>
     </div>
 </div>
+<div id="video-record-overlay">
+        <div class="record-circle-container">
+            <video id="record-preview" autoplay muted playsinline></video>
+            <div id="record-timer">
+                <div class="dot"></div>
+                <span id="record-time-text">0:00</span>
+            </div>
+        </div>
+    </div>
 <div id="contacts-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
     <div style="background: var(--bg-sidebar); width: 90%; max-width: 400px; border-radius: 20px; padding: 20px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -99,6 +108,21 @@
     const themeToggle = document.getElementById('theme-toggle');
     const themeIcon = document.getElementById('theme-icon');
     const themeText = document.getElementById('theme-text');
+
+    // --- ПЕРЕМЕННЫЕ ДЛЯ ЗАПИСИ "КРУЖОЧКОВ" (ВИДЕО) ---
+    const imageInputLabel = document.querySelector('label[for="image-upload"]');
+    const imageInput = document.getElementById('image-upload');
+    const videoRecordOverlay = document.getElementById('video-record-overlay');
+    const recordPreview = document.getElementById('record-preview');
+    const recordTimeText = document.getElementById('record-time-text');
+
+    let pressTimer = null; // Таймер для распознавания зажатия
+    let isHolding = false; // Флаг, что кнопка зажата
+    let isRecordingCircle = false; // Флаг, что идет запись
+    let circleMediaRecorder;
+    let circleVideoChunks = [];
+    let circleRecordTimerInterval;
+    let circleStartTime;
 
     menuBtn.addEventListener('click', () => {
         drawer.classList.add('open');
@@ -258,15 +282,22 @@
                         const type = msg.sender === myUsername ? 'my-message' : 'other-message';
                         
                         // Если это старое сообщение (без box.type) или текст:
-                        // ... (внутри цикла в openChatWith) ...
+                        // Если это старое сообщение (без box.type) или текст:
                         if (!box.type || box.type === 'TEXT') {
                             const text = bufferToText(decryptedBuffer);
                             displayMessage(text, type, new Date(msg.createdAt), false, '', msg.isRead);
                         } else if (box.type === 'AUDIO') {
+                            // АУДИО
                             const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                             const url = URL.createObjectURL(blob);
-                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, true);
+                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, true, false); 
+                        } else if (box.type === 'VIDEO_CIRCLE') {
+                            // КРУЖОЧКИ
+                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                            const url = URL.createObjectURL(blob);
+                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, false, true); 
                         } else {
+                            // КАРТИНКИ И ФАЙЛЫ
                             const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                             const fileUrl = URL.createObjectURL(blob);
                             displayMessage(fileUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
@@ -686,26 +717,42 @@
     });
 
 
-    // --- 2. ОТРИСОВКА СООБЩЕНИЙ (КЛИКАБЕЛЬНЫЕ ФОТО И ФАЙЛЫ) ---
-    // Функция остается прежней, она просто подставляет Blob URL
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ ---
-    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false) {
+    // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ВСЕ ФОРМАТЫ) ---
+    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false) {
         const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         msgDiv.className = `message ${className}`;
 
         let innerContent = content;
 
-        if (isImage) {
+        if (isCircleVideo) {
+            // КРУЖОЧКИ (ВИДЕО)
+            innerContent = `
+                <video src="${content}" playsinline autoplay loop muted style="width: 180px; height: 180px; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer; display: block;"></video>
+                <div style="font-size: 11px; color: var(--text-muted); text-align: center; margin-top: 5px;">Кружочек</div>
+            `;
+            setTimeout(() => {
+                const videoNode = msgDiv.querySelector('video');
+                if (videoNode) {
+                    videoNode.onclick = () => {
+                        if (videoNode.paused) videoNode.play();
+                        else videoNode.pause();
+                    };
+                }
+            }, 0);
+        } else if (isAudio) {
+            // ГОЛОСОВЫЕ СООБЩЕНИЯ
+            innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
+        } else if (isImage) {
+            // КАРТИНКИ
             innerContent = `<img src="${content}" alt="${fileName}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" />`;
             setTimeout(() => {
                 const imgNode = msgDiv.querySelector('.chat-image');
                 if (imgNode) imgNode.onclick = () => viewImage(content);
             }, 0);
-        } else if (isAudio) {
-            // АУДИОПЛЕЕР
-            innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
         } else if (fileName) {
+            // ФАЙЛЫ
             innerContent = `
                 <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px;">
                     <span style="font-size: 24px;">📄</span>
@@ -713,6 +760,7 @@
                 </div>
             `;
         } else {
+            // ОБЫЧНЫЙ ТЕКСТ
             msgDiv.classList.add('text-message');
         }
 
@@ -790,6 +838,147 @@
             alert("Не удалось зашифровать файл.");
         }
     }
+
+    // --- 7. ЗАПИСЬ И ОТПРАВКА "КРУЖОЧКОВ" (ВИДЕОСООБЩЕНИЙ) ---
+
+    // Функция обновления таймера записи
+    function updateCircleTimer() {
+        const diff = Date.now() - circleStartTime;
+        const totalSeconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
+        recordTimeText.textContent = `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
+    }
+
+    // Функция СТАРТА записи
+    async function startRecordingCircle() {
+        if (!currentSharedKey || !currentChatUser) {
+            alert("Сначала выберите собеседника слева!");
+            clearTimeout(pressTimer);
+            return;
+        }
+
+        try {
+            console.log("🎥 Запрашиваем доступ к камере и микрофону...");
+            // Запрашиваем квадратное видео для селфи-камеры
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 640 } },
+                audio: true
+            });
+            
+            // Показываем предпросмотр
+            recordPreview.srcObject = stream;
+            videoRecordOverlay.classList.add('show');
+            
+            circleVideoChunks = [];
+            // Используем WebM формат (широко поддерживается, E2EE совместим)
+            circleMediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+
+            circleMediaRecorder.ondataavailable = e => {
+                if (e.data.size > 0) circleVideoChunks.push(e.data);
+            };
+
+            circleMediaRecorder.onstop = async () => {
+                // Прячем оверлей
+                videoRecordOverlay.classList.remove('show');
+                
+                if (circleVideoChunks.length === 0) return;
+
+                const videoBlob = new Blob(circleVideoChunks, { type: 'video/webm' });
+                const arrayBuffer = await videoBlob.arrayBuffer();
+                
+                console.log(`🔒 Шифрование видео-кружка...`);
+                // Используем наш существующий бинарный E2EE движок!
+                const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
+
+                const payload = {
+                    sender: myUsername,
+                    recipient: currentChatUser,
+                    secretBox: { 
+                        ...encryptedData, 
+                        type: 'VIDEO_CIRCLE', // НОВЫЙ ТИП
+                        mimeType: 'video/webm'
+                    }
+                };
+
+                socket.emit('send_message', { text: JSON.stringify(payload) });
+                
+                const videoUrl = URL.createObjectURL(videoBlob);
+                // Будем рисовать, передав isCircleVideo = true в displayMessage
+                displayMessage(videoUrl, 'my-message', new Date(), false, '', false, true);
+            };
+
+            circleMediaRecorder.start();
+            isRecordingCircle = true;
+            
+            // Запускаем таймер
+            circleStartTime = Date.now();
+            recordTimeText.textContent = "0:00";
+            circleRecordTimerInterval = setInterval(updateCircleTimer, 1000);
+
+        } catch (err) {
+            console.error("Ошибка камеры:", err);
+            alert("Разрешите доступ к камере и микрофону в настройках браузера!");
+            isHolding = false;
+        }
+    }
+
+    // Функция ОСТАНОВКИ записи
+    function stopRecordingCircle() {
+        if (!isRecordingCircle) return;
+        
+        clearInterval(circleRecordTimerInterval);
+        circleMediaRecorder.stop();
+        // Отключаем камеру и микрофон, чтобы красная точка пропала
+        circleMediaRecorder.stream.getTracks().forEach(track => track.stop());
+        isRecordingCircle = false;
+    }
+
+    // --- ОБРАБОТЧИКИ ЗАЖАТИЯ КНОПКИ (Mouse & Touch) ---
+
+    // Событие НАЧАЛА зажатия
+    const handleStartPress = (e) => {
+        // Если кликнули, а не зажали (short click), даем сработать input file (default)
+        if (isHolding || isRecordingCircle) return;
+        
+        // Предотвращаем стандартное поведение (drag)
+        e.preventDefault();
+        
+        isHolding = true;
+        // Запускаем таймер на 500мс. Если продержали дольше - это зажатие.
+        pressTimer = setTimeout(() => {
+            if (isHolding) startRecordingCircle();
+        }, 500);
+    };
+
+    // Событие ОКОНЧАНИЯ зажатия
+    const handleEndPress = (e) => {
+        // Очищаем таймер, если отпустили раньше 500мс
+        clearTimeout(pressTimer);
+        isHolding = false;
+
+        // Если шла запись кружка — останавливаем и отправляем
+        if (isRecordingCircle) {
+            stopRecordingCircle();
+            e.preventDefault(); // Предотвращаем клик, если это был touch
+        } else {
+            // Если продержали МЕНЬШЕ 500мс — это обычный клик.
+            // Принудительно вызываем выбор фото.
+            // e.target.click() может вызвать рекурсию на лейбле,
+            // поэтому просто кликаем сам инпут.
+            imageInput.click();
+        }
+    };
+
+    // Вешаем обработчики на лейбл
+    imageInputLabel.addEventListener('mousedown', handleStartPress);
+    imageInputLabel.addEventListener('mouseup', handleEndPress);
+    imageInputLabel.addEventListener('mouseleave', handleEndPress); // Отпустили за пределами
+
+    // Поддержка Touch (для мобильных)
+    imageInputLabel.addEventListener('touchstart', handleStartPress);
+    imageInputLabel.addEventListener('touchend', handleEndPress);
+    imageInputLabel.addEventListener('touchcancel', handleEndPress);
     
     // --- 6. ЗАПИСЬ И ОТПРАВКА ГОЛОСОВЫХ СООБЩЕНИЙ ---
     const micBtn = document.getElementById('mic-btn');
@@ -885,11 +1074,17 @@
                     const text = bufferToText(decryptedBuffer);
                     displayMessage(text, 'other-message', new Date(), false);
                 } else if (box.type === 'AUDIO') {
-                    // НОВОЕ: Обработка входящего аудио
+                    // АУДИО
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, 'other-message', new Date(), false, '', false, true);
+                    displayMessage(url, 'other-message', new Date(), false, '', false, true, false);
+                } else if (box.type === 'VIDEO_CIRCLE') {
+                    // КРУЖОЧКИ
+                    const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                    const url = URL.createObjectURL(blob);
+                    displayMessage(url, 'other-message', new Date(), false, '', false, false, true);
                 } else {
+                    // КАРТИНКИ И ФАЙЛЫ
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const fileUrl = URL.createObjectURL(blob);
                     displayMessage(fileUrl, 'other-message', new Date(), box.type === 'IMAGE', box.fileName);
@@ -898,7 +1093,7 @@
             }
         } catch (e) { console.error("Ошибка пакета", e); }
     });
-
+    
     // --- НОВОЕ: МЕНЯЕМ ОДНУ ГАЛОЧКУ НА ДВЕ В РЕАЛЬНОМ ВРЕМЕНИ ---
     socket.on('messages_were_read', (data) => {
         // Если мы сейчас в чате с тем, кто прочитал наши сообщения
