@@ -874,6 +874,7 @@
     // Функция СТАРТА записи
     // Функция СТАРТА записи
     // Функция СТАРТА записи
+    // Функция СТАРТА записи
     async function startRecordingCircle() {
         if (!currentSharedKey || !currentChatUser) {
             alert("Сначала выберите собеседника слева!");
@@ -893,26 +894,19 @@
             
             recordPreview.srcObject = stream;
             videoRecordOverlay.classList.add('show');
-            
             currentMicTrack = stream.getAudioTracks()[0];
 
-            // 1. ЗАПУСКАЕМ ОТРИСОВКУ НА ХОЛСТЕ (60 FPS)
             function drawToCanvas() {
                 if (!isRecordingCircle) return;
-                
                 if (recordPreview.videoWidth > 0) {
                     ctx.save();
-                    // Отзеркаливаем холст, если это фронталка (чтобы собеседник видел правильно)
                     if (currentFacingMode === 'user') {
                         ctx.translate(recordCanvas.width, 0);
                         ctx.scale(-1, 1);
                     }
-                    
-                    // Обрезаем прямоугольное видео с камеры в идеальный квадрат (как object-fit: cover)
                     const size = Math.min(recordPreview.videoWidth, recordPreview.videoHeight);
                     const x = (recordPreview.videoWidth - size) / 2;
                     const y = (recordPreview.videoHeight - size) / 2;
-                    
                     ctx.drawImage(recordPreview, x, y, size, size, 0, 0, recordCanvas.width, recordCanvas.height);
                     ctx.restore();
                 }
@@ -920,24 +914,51 @@
             }
             drawToCanvas();
 
-            // 2. СОЗДАЕМ ИСКУССТВЕННЫЙ СТРИМ (Холст + Оригинальный Микрофон)
-            const canvasVideoStream = recordCanvas.captureStream(30); // 30 кадров в секунду
+            const canvasVideoStream = recordCanvas.captureStream(20); 
             const combinedStream = new MediaStream([canvasVideoStream.getVideoTracks()[0], currentMicTrack]);
 
             circleVideoChunks = [];
-            // РЕКОРДЕР ПИШЕТ ХОЛСТ, А НЕ КАМЕРУ!
-            // ЖЕСТКО ОГРАНИЧИВАЕМ БИТРЕЙТ (качество видео), чтобы файл весил мало
-            circleMediaRecorder = new MediaRecorder(combinedStream, { 
-                mimeType: 'video/webm;codecs=vp8,opus',
-                videoBitsPerSecond: 250000 // Ограничение в ~250 kbps
-            });
+            
+            // Динамически выбираем лучший формат, который поддерживает браузер
+            let options = { videoBitsPerSecond: 250000 };
+            if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
+                options.mimeType = 'video/webm;codecs=vp8,opus';
+            } else if (MediaRecorder.isTypeSupported('video/webm')) {
+                options.mimeType = 'video/webm';
+            }
+
+            circleMediaRecorder = new MediaRecorder(combinedStream, options);
 
             circleMediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) circleVideoChunks.push(e.data);
             };
 
-            circleMediaRecorder.onstop = () => {
+            // МАГИЯ ЗДЕСЬ: Мы шифруем и отправляем видео ТОЛЬКО когда оно полностью сформировано!
+            circleMediaRecorder.onstop = async () => {
                 videoRecordOverlay.classList.remove('show');
+
+                if (circleVideoChunks.length === 0) return;
+
+                console.log(`🔒 Шифрование видео-кружка...`);
+                const actualMimeType = circleMediaRecorder.mimeType || 'video/webm';
+                const videoBlob = new Blob(circleVideoChunks, { type: actualMimeType });
+                const arrayBuffer = await videoBlob.arrayBuffer();
+                const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
+
+                const payload = {
+                    sender: myUsername,
+                    recipient: currentChatUser,
+                    secretBox: { 
+                        ...encryptedData, 
+                        type: 'VIDEO_CIRCLE',
+                        mimeType: actualMimeType // Сохраняем точный формат
+                    }
+                };
+
+                socket.emit('send_message', { text: JSON.stringify(payload) });
+                
+                const videoUrl = URL.createObjectURL(videoBlob);
+                displayMessage(videoUrl, 'my-message', new Date(), false, '', false, false, true);
             };
 
             circleMediaRecorder.start(100); 
@@ -952,7 +973,8 @@
 
         } catch (err) {
             console.error("Ошибка камеры:", err);
-            alert("Разрешите доступ к камере и микрофону!");
+            // Если камера занята (например, стримом), мы честно скажем об этом
+            alert("Разрешите доступ к камере! Возможно, она уже используется другой программой (например, OBS).");
             isHolding = false;
         }
     }
@@ -1129,49 +1151,23 @@
     });
 
     // Обработчик кнопки СТОП И ОТПРАВИТЬ
-    recordStopBtn.addEventListener('click', async () => {
+    // Обработчик кнопки СТОП И ОТПРАВИТЬ
+    recordStopBtn.addEventListener('click', () => {
         if (!isRecordingCircle) return;
         
         clearInterval(circleRecordTimerInterval);
-        cancelAnimationFrame(drawFrameId); // Убиваем цикл отрисовки холста
+        cancelAnimationFrame(drawFrameId); 
         
+        // Просто даем команду СТОП. 
+        // Событие circleMediaRecorder.onstop сработает само и надежно отправит файл!
         circleMediaRecorder.stop();
         
-        // Отключаем свет камер и микрофон
         if (recordPreview.srcObject) {
             recordPreview.srcObject.getTracks().forEach(track => track.stop());
         }
         if (currentMicTrack) currentMicTrack.stop();
         
         isRecordingCircle = false;
-        
-        // Ждем немного, пока все данные соберутся
-        await new Promise(resolve => setTimeout(resolve, 300));
-
-        if (circleVideoChunks.length === 0) return;
-
-        console.log(`🔒 Шифрование видео-кружка...`);
-        const videoBlob = new Blob(circleVideoChunks, { type: 'video/webm' });
-        const arrayBuffer = await videoBlob.arrayBuffer();
-        const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
-
-        const payload = {
-            sender: myUsername,
-            recipient: currentChatUser,
-            secretBox: { 
-                ...encryptedData, 
-                type: 'VIDEO_CIRCLE',
-                mimeType: 'video/webm'
-            }
-        };
-
-        socket.emit('send_message', { text: JSON.stringify(payload) });
-        
-        const videoUrl = URL.createObjectURL(videoBlob);
-        displayMessage(videoUrl, 'my-message', new Date(), false, '', false, true);
-        
-        // Прячем оверлей
-        videoRecordOverlay.classList.remove('show');
     });
 
     // Слушатели для наших новых кнопок
