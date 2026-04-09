@@ -130,8 +130,8 @@
     // МАГИЯ CANVAS: Виртуальный холст для бесшовной склейки камер
     let drawFrameId;
     const recordCanvas = document.createElement('canvas');
-    recordCanvas.width = 640;
-    recordCanvas.height = 640;
+    recordCanvas.width = 320;  // БЫЛО 640
+    recordCanvas.height = 320; // БЫЛО 640
     const ctx = recordCanvas.getContext('2d');
     let currentMicTrack; // Отдельно храним микрофон
 
@@ -926,7 +926,11 @@
 
             circleVideoChunks = [];
             // РЕКОРДЕР ПИШЕТ ХОЛСТ, А НЕ КАМЕРУ!
-            circleMediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus' });
+            // ЖЕСТКО ОГРАНИЧИВАЕМ БИТРЕЙТ (качество видео), чтобы файл весил мало
+            circleMediaRecorder = new MediaRecorder(combinedStream, { 
+                mimeType: 'video/webm;codecs=vp8,opus',
+                videoBitsPerSecond: 250000 // Ограничение в ~250 kbps
+            });
 
             circleMediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) circleVideoChunks.push(e.data);
