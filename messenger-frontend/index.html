@@ -127,6 +127,13 @@
     const recordTimeText = document.getElementById('record-time-text');
     const recordPauseBtn = document.getElementById('record-pause-btn');
     const recordStopBtn = document.getElementById('record-stop-btn');
+    // МАГИЯ CANVAS: Виртуальный холст для бесшовной склейки камер
+    let drawFrameId;
+    const recordCanvas = document.createElement('canvas');
+    recordCanvas.width = 640;
+    recordCanvas.height = 640;
+    const ctx = recordCanvas.getContext('2d');
+    let currentMicTrack; // Отдельно храним микрофон
 
     let pressTimer = null; // Таймер для распознавания зажатия
     let isHolding = false; // Флаг, что кнопка зажата
@@ -866,6 +873,7 @@
 
     // Функция СТАРТА записи
     // Функция СТАРТА записи
+    // Функция СТАРТА записи
     async function startRecordingCircle() {
         if (!currentSharedKey || !currentChatUser) {
             alert("Сначала выберите собеседника слева!");
@@ -874,9 +882,7 @@
         }
 
         try {
-            console.log("🎥 Запрашиваем доступ к камере и микрофону...");
-            
-            // Сбрасываем на фронталку при каждом новом кружке
+            console.log("🎥 Запрашиваем доступ к камере...");
             currentFacingMode = 'user'; 
             recordPreview.classList.add('mirrored');
 
@@ -888,29 +894,55 @@
             recordPreview.srcObject = stream;
             videoRecordOverlay.classList.add('show');
             
+            currentMicTrack = stream.getAudioTracks()[0];
+
+            // 1. ЗАПУСКАЕМ ОТРИСОВКУ НА ХОЛСТЕ (60 FPS)
+            function drawToCanvas() {
+                if (!isRecordingCircle) return;
+                
+                if (recordPreview.videoWidth > 0) {
+                    ctx.save();
+                    // Отзеркаливаем холст, если это фронталка (чтобы собеседник видел правильно)
+                    if (currentFacingMode === 'user') {
+                        ctx.translate(recordCanvas.width, 0);
+                        ctx.scale(-1, 1);
+                    }
+                    
+                    // Обрезаем прямоугольное видео с камеры в идеальный квадрат (как object-fit: cover)
+                    const size = Math.min(recordPreview.videoWidth, recordPreview.videoHeight);
+                    const x = (recordPreview.videoWidth - size) / 2;
+                    const y = (recordPreview.videoHeight - size) / 2;
+                    
+                    ctx.drawImage(recordPreview, x, y, size, size, 0, 0, recordCanvas.width, recordCanvas.height);
+                    ctx.restore();
+                }
+                drawFrameId = requestAnimationFrame(drawToCanvas);
+            }
+            drawToCanvas();
+
+            // 2. СОЗДАЕМ ИСКУССТВЕННЫЙ СТРИМ (Холст + Оригинальный Микрофон)
+            const canvasVideoStream = recordCanvas.captureStream(30); // 30 кадров в секунду
+            const combinedStream = new MediaStream([canvasVideoStream.getVideoTracks()[0], currentMicTrack]);
+
             circleVideoChunks = [];
-            circleMediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8,opus' });
+            // РЕКОРДЕР ПИШЕТ ХОЛСТ, А НЕ КАМЕРУ!
+            circleMediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm;codecs=vp8,opus' });
 
             circleMediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) circleVideoChunks.push(e.data);
             };
 
-            // ОБНОВЛЕНО: Мы больше не отправляем по stop(), а делаем это по кнопке STOP
             circleMediaRecorder.onstop = () => {
-                // Прячем оверлей
                 videoRecordOverlay.classList.remove('show');
             };
 
-            // Начинаем запись, сохраняя данные каждые 100мс (для паузы)
             circleMediaRecorder.start(100); 
             isRecordingCircle = true;
             
-            // Запускаем таймер
             circleStartTime = Date.now();
             recordTimeText.textContent = "0:00";
             circleRecordTimerInterval = setInterval(updateCircleTimer, 1000);
 
-            // Сбрасываем состояние кнопок
             recordPauseBtn.classList.remove('paused');
             recordPauseBtn.textContent = '||';
 
@@ -932,38 +964,35 @@
     }
 
     // Обработчик кнопки СМЕНЫ КАМЕРЫ
+    // Обработчик кнопки СМЕНЫ КАМЕРЫ
     recordSwitchCamBtn.addEventListener('click', async () => {
         if (!isRecordingCircle) return;
-        
-        // Переключаем режим
         const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
         
         try {
-            // Запрашиваем ТОЛЬКО новое видео (без аудио, чтобы не прерывать запись звука)
+            // Запрашиваем ТОЛЬКО новое видео
             const newVideoStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: newFacingMode, width: { ideal: 640 }, height: { ideal: 640 } }
             });
             
             const newVideoTrack = newVideoStream.getVideoTracks()[0];
-            const currentStream = recordPreview.srcObject;
-            const oldVideoTrack = currentStream.getVideoTracks()[0];
+            const currentCameraStream = recordPreview.srcObject;
+            const oldVideoTrack = currentCameraStream.getVideoTracks()[0];
             
-            // Магия подмены трека "на лету"
-            currentStream.removeTrack(oldVideoTrack);
-            currentStream.addTrack(newVideoTrack);
+            // Подменяем трек в элементе ПРЕДПРОСМОТРА
+            currentCameraStream.removeTrack(oldVideoTrack);
+            currentCameraStream.addTrack(newVideoTrack);
             oldVideoTrack.stop(); // Выключаем старую камеру
             
-            // Применяем новый режим и отзеркаливание
             currentFacingMode = newFacingMode;
             if (currentFacingMode === 'user') {
                 recordPreview.classList.add('mirrored');
             } else {
                 recordPreview.classList.remove('mirrored');
             }
-            
+            // Canvas продолжает рисовать, рекордер продолжает писать. Бесшовно!
         } catch (err) {
             console.error("Ошибка при смене камеры:", err);
-            // На ПК может не быть второй камеры, просто игнорируем
         }
     });
 
@@ -1099,11 +1128,17 @@
     recordStopBtn.addEventListener('click', async () => {
         if (!isRecordingCircle) return;
         
-        // Останавливаем запись
         clearInterval(circleRecordTimerInterval);
+        cancelAnimationFrame(drawFrameId); // Убиваем цикл отрисовки холста
+        
         circleMediaRecorder.stop();
-        // Отключаем камеру и микрофон
-        circleMediaRecorder.stream.getTracks().forEach(track => track.stop());
+        
+        // Отключаем свет камер и микрофон
+        if (recordPreview.srcObject) {
+            recordPreview.srcObject.getTracks().forEach(track => track.stop());
+        }
+        if (currentMicTrack) currentMicTrack.stop();
+        
         isRecordingCircle = false;
         
         // Ждем немного, пока все данные соберутся
