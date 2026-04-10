@@ -534,3 +534,43 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     color: white !important;
     margin-left: 2px;
 }
+
+/* === АНИМАЦИИ ДЛЯ КРУЖОЧКОВ (TELEGRAM STYLE) === */
+
+/* 1. Пружинистое появление самого окна записи */
+.record-circle-container {
+    transform: scale(0.4);
+    opacity: 0;
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.25), opacity 0.3s ease;
+}
+
+#video-record-overlay.show .record-circle-container {
+    transform: scale(1);
+    opacity: 1;
+}
+
+/* Кнопки управления под кружком тоже красиво выезжают снизу */
+.record-controls {
+    transform: translateY(30px);
+    opacity: 0;
+    transition: transform 0.4s ease 0.1s, opacity 0.3s ease 0.1s;
+}
+
+#video-record-overlay.show .record-controls {
+    transform: translateY(0);
+    opacity: 1;
+}
+
+/* 2. Анимация увеличения кружка при воспроизведении в чате */
+.circle-video-player {
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2) !important;
+    position: relative;
+    z-index: 1;
+}
+
+/* Класс, который JS будет добавлять во время Play */
+.circle-video-player.is-playing {
+    transform: scale(1.08) !important; /* Увеличиваем на 8% */
+    z-index: 10 !important; /* Выводим поверх остальных сообщений */
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important; /* Делаем тень глубже */
+}
