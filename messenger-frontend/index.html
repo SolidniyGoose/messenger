@@ -896,8 +896,18 @@
             videoRecordOverlay.classList.add('show');
             currentMicTrack = stream.getAudioTracks()[0];
 
+            // 1. МАГИЯ: Заливаем холст черным ДО старта записи!
+            // Это гарантирует, что MediaRecorder не сломается от пустого кадра
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
+
             function drawToCanvas() {
                 if (!isRecordingCircle) return;
+                
+                // Стираем старый кадр черным фоном
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
+
                 if (recordPreview.videoWidth > 0) {
                     ctx.save();
                     if (currentFacingMode === 'user') {
@@ -915,33 +925,31 @@
             drawToCanvas();
 
             const canvasVideoStream = recordCanvas.captureStream(20); 
-            const combinedStream = new MediaStream([canvasVideoStream.getVideoTracks()[0], currentMicTrack]);
+            
+            // 2. БЕЗОПАСНАЯ сборка треков (чтобы не упало, если микрофон отвалится)
+            const tracks = [canvasVideoStream.getVideoTracks()[0]];
+            if (currentMicTrack) tracks.push(currentMicTrack);
+            const combinedStream = new MediaStream(tracks);
 
             circleVideoChunks = [];
             
-            // Динамически выбираем лучший формат, который поддерживает браузер
-            let options = { videoBitsPerSecond: 250000 };
-            if (MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')) {
-                options.mimeType = 'video/webm;codecs=vp8,opus';
-            } else if (MediaRecorder.isTypeSupported('video/webm')) {
-                options.mimeType = 'video/webm';
-            }
-
-            circleMediaRecorder = new MediaRecorder(combinedStream, options);
+            // 3. Убрали жесткие кодеки, чтобы не вызывать NotSupportedError
+            circleMediaRecorder = new MediaRecorder(combinedStream, { videoBitsPerSecond: 250000 });
 
             circleMediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) circleVideoChunks.push(e.data);
             };
 
-            // МАГИЯ ЗДЕСЬ: Мы шифруем и отправляем видео ТОЛЬКО когда оно полностью сформировано!
             circleMediaRecorder.onstop = async () => {
                 videoRecordOverlay.classList.remove('show');
 
                 if (circleVideoChunks.length === 0) return;
 
                 console.log(`🔒 Шифрование видео-кружка...`);
-                const actualMimeType = circleMediaRecorder.mimeType || 'video/webm';
-                const videoBlob = new Blob(circleVideoChunks, { type: actualMimeType });
+                
+                // 4. Используем базовый тип. Браузер сам разберется, как это играть!
+                const safeMimeType = 'video/webm'; 
+                const videoBlob = new Blob(circleVideoChunks, { type: safeMimeType });
                 const arrayBuffer = await videoBlob.arrayBuffer();
                 const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
 
@@ -951,7 +959,7 @@
                     secretBox: { 
                         ...encryptedData, 
                         type: 'VIDEO_CIRCLE',
-                        mimeType: actualMimeType // Сохраняем точный формат
+                        mimeType: safeMimeType
                     }
                 };
 
@@ -973,8 +981,7 @@
 
         } catch (err) {
             console.error("Ошибка камеры:", err);
-            // Если камера занята (например, стримом), мы честно скажем об этом
-            alert("Разрешите доступ к камере! Возможно, она уже используется другой программой (например, OBS).");
+            alert("Разрешите доступ к камере! Возможно, она занята вашей программой для стрима (OBS).");
             isHolding = false;
         }
     }
@@ -1158,9 +1165,10 @@
         clearInterval(circleRecordTimerInterval);
         cancelAnimationFrame(drawFrameId); 
         
-        // Просто даем команду СТОП. 
-        // Событие circleMediaRecorder.onstop сработает само и надежно отправит файл!
-        circleMediaRecorder.stop();
+        // Безопасная остановка рекордера
+        if (circleMediaRecorder && circleMediaRecorder.state !== 'inactive') {
+            circleMediaRecorder.stop();
+        }
         
         if (recordPreview.srcObject) {
             recordPreview.srcObject.getTracks().forEach(track => track.stop());
