@@ -130,10 +130,22 @@
     // МАГИЯ CANVAS: Виртуальный холст для бесшовной склейки камер
     let drawFrameId;
     const recordCanvas = document.createElement('canvas');
-    recordCanvas.width = 320;  // БЫЛО 640
-    recordCanvas.height = 320; // БЫЛО 640
-    const ctx = recordCanvas.getContext('2d');
-    let currentMicTrack; // Отдельно храним микрофон
+    recordCanvas.width = 320;
+    recordCanvas.height = 320;
+    
+    // Бронебойный фикс для телефонов: делаем его реальным размером, но абсолютно невидимым
+    recordCanvas.style.position = 'absolute';
+    recordCanvas.style.top = '0';
+    recordCanvas.style.left = '0';
+    recordCanvas.style.width = '320px';
+    recordCanvas.style.height = '320px';
+    recordCanvas.style.opacity = '0'; // Полностью прозрачный
+    recordCanvas.style.zIndex = '-1000'; // Прячем глубоко под сайт
+    recordCanvas.style.pointerEvents = 'none';
+    document.body.appendChild(recordCanvas); // Добавляем на страницу
+    
+    const ctx = recordCanvas.getContext('2d', { willReadFrequently: true });
+    let currentMicTrack;
 
     let pressTimer = null; // Таймер для распознавания зажатия
     let isHolding = false; // Флаг, что кнопка зажата
@@ -875,6 +887,7 @@
     // Функция СТАРТА записи
     // Функция СТАРТА записи
     // Функция СТАРТА записи
+    // Функция СТАРТА записи
     async function startRecordingCircle() {
         if (!currentSharedKey || !currentChatUser) {
             alert("Сначала выберите собеседника слева!");
@@ -896,22 +909,17 @@
             videoRecordOverlay.classList.add('show');
             currentMicTrack = stream.getAudioTracks()[0];
 
-            // ДОБАВИТЬ ЭТУ СТРОКУ (Принудительно запускает видео, защищая от черного экрана):
-            recordPreview.play().catch(e => console.error("Ошибка автозапуска:", e));
-            // 1. МАГИЯ: Заливаем холст черным ДО старта записи!
-            // Это гарантирует, что MediaRecorder не сломается от пустого кадра
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
+            recordPreview.play().catch(e => console.log("Автозапуск:", e));
+
+            // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Ставим флаг ДО запуска цикла отрисовки!
+            isRecordingCircle = true;
 
             function drawToCanvas() {
                 if (!isRecordingCircle) return;
                 
-                // Стираем старый кадр черным фоном
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
 
-                // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: 
-                // readyState >= 2 означает, что у видео уже есть реальные пиксели для отрисовки
                 if (recordPreview.readyState >= 2 && recordPreview.videoWidth > 0) {
                     try {
                         ctx.save();
@@ -924,28 +932,26 @@
                         const y = (recordPreview.videoHeight - size) / 2;
                         ctx.drawImage(recordPreview, x, y, size, size, 0, 0, recordCanvas.width, recordCanvas.height);
                         ctx.restore();
-                    } catch (e) {
-                        // Если браузер всё же ругнется на пустой кадр - просто игнорируем,
-                        // цикл продолжит работу и нарисует следующий кадр!
-                    }
+                    } catch (e) {} 
                 }
                 
-                // Запускаем следующий кадр
+                // Теперь цикл будет крутиться, так как isRecordingCircle = true
                 drawFrameId = requestAnimationFrame(drawToCanvas);
             }
-            drawToCanvas();
-
-            const canvasVideoStream = recordCanvas.captureStream(20); 
             
-            // 2. БЕЗОПАСНАЯ сборка треков (чтобы не упало, если микрофон отвалится)
-            const tracks = [canvasVideoStream.getVideoTracks()[0]];
+            drawToCanvas(); 
+
+            const canvasVideoStream = recordCanvas.captureStream(30); 
+            
+            const tracks = [];
+            const videoTrack = canvasVideoStream.getVideoTracks()[0];
+            if (videoTrack) tracks.push(videoTrack);
             if (currentMicTrack) tracks.push(currentMicTrack);
+            
             const combinedStream = new MediaStream(tracks);
 
             circleVideoChunks = [];
-            
-            // 3. Убрали жесткие кодеки, чтобы не вызывать NotSupportedError
-            circleMediaRecorder = new MediaRecorder(combinedStream, { videoBitsPerSecond: 250000 });
+            circleMediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
 
             circleMediaRecorder.ondataavailable = e => {
                 if (e.data.size > 0) circleVideoChunks.push(e.data);
@@ -953,12 +959,10 @@
 
             circleMediaRecorder.onstop = async () => {
                 videoRecordOverlay.classList.remove('show');
-
                 if (circleVideoChunks.length === 0) return;
 
                 console.log(`🔒 Шифрование видео-кружка...`);
                 
-                // 4. Используем базовый тип. Браузер сам разберется, как это играть!
                 const safeMimeType = 'video/webm'; 
                 const videoBlob = new Blob(circleVideoChunks, { type: safeMimeType });
                 const arrayBuffer = await videoBlob.arrayBuffer();
@@ -981,7 +985,6 @@
             };
 
             circleMediaRecorder.start(100); 
-            isRecordingCircle = true;
             
             circleStartTime = Date.now();
             recordTimeText.textContent = "0:00";
@@ -992,7 +995,7 @@
 
         } catch (err) {
             console.error("Ошибка камеры:", err);
-            alert("Разрешите доступ к камере! Возможно, она занята вашей программой для стрима (OBS).");
+            alert("Разрешите доступ к камере! (Или отключите другие программы, использующие её)");
             isHolding = false;
         }
     }
