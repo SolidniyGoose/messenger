@@ -1163,7 +1163,7 @@
         if (!isRecordingCircle) return;
         
         clearInterval(circleRecordTimerInterval);
-        cancelAnimationFrame(drawFrameId); 
+        cancelAnimationFrame(drawFrameId);
         
         // Безопасная остановка рекордера
         if (circleMediaRecorder && circleMediaRecorder.state !== 'inactive') {
