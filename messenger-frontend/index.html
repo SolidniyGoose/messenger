@@ -771,11 +771,10 @@
 
         if (isCircleVideo) {
             // КРУЖОЧКИ (ВИДЕО)
-            msgDiv.classList.add('circle-message'); // <--- ДОБАВИЛИ СПЕЦИАЛЬНЫЙ КЛАСС
+            msgDiv.classList.add('circle-message'); // <--- ВАЖНО: Добавляем класс прозрачности!
             
-            // Убрали текст "Кружочек" снизу
             innerContent = `
-                <video src="${content}" playsinline autoplay loop muted style="width: 180px; height: 180px; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 10px rgba(0,0,0,0.3); cursor: pointer; display: block; background: #000;"></video>
+                <video src="${content}" playsinline autoplay loop muted style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 12px rgba(0,0,0,0.25); cursor: pointer; display: block; background: #000;"></video>
             `;
             setTimeout(() => {
                 const videoNode = msgDiv.querySelector('video');
@@ -787,6 +786,7 @@
                 }
             }, 0);
         } else if (isAudio) {
+            // ... (остальной код функции остается без изменений)
             // ГОЛОСОВЫЕ СООБЩЕНИЯ
             innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
         } else if (isImage) {

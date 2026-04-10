@@ -497,3 +497,40 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 .message.circle-message .status-sent {
     color: rgba(255, 255, 255, 0.8) !important;
 }
+
+/* --- СТИЛИ ДЛЯ СООБЩЕНИЙ-КРУЖОЧКОВ (ПРОЗРАЧНЫЙ ФОН) --- */
+.message.circle-message {
+    background: transparent !important; /* Убираем синий/белый фон */
+    box-shadow: none !important; /* Убираем тень от квадрата */
+    padding: 0 !important; /* Убираем внутренние отступы */
+    position: relative;
+    width: 180px; 
+    height: 180px;
+    margin-bottom: 15px;
+}
+
+/* Красивая полупрозрачная плашка для времени и галочек поверх кружка */
+.message.circle-message .meta {
+    position: absolute;
+    bottom: 10px;
+    right: 50%;
+    transform: translateX(50%); /* Центрируем внизу кружка */
+    background: rgba(0, 0, 0, 0.4); /* Темная подложка */
+    color: white !important;
+    padding: 4px 10px;
+    border-radius: 12px;
+    margin: 0;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Белые галочки на темном фоне для кружков */
+.message.circle-message .status-sent,
+.message.circle-message .status-read {
+    color: white !important;
+    margin-left: 2px;
+}
