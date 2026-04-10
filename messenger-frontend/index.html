@@ -94,7 +94,7 @@
             <input type="file" id="image-upload" accept="image/*" style="display: none;">
             <input type="file" id="file-upload" style="display: none;">
             
-            <label for="image-upload" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить картинку" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📷</label>
+            <span id="camera-btn" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить картинку или видео" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📷</span>
             <label for="file-upload" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить файл" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📎</label>
 
             <button id="mic-btn" style="background: none; border: none; font-size: 22px; margin-right: 10px; cursor: pointer; color: var(--text-muted); transition: 0.2s;" title="Голосовое сообщение">🎤</button>
@@ -123,8 +123,10 @@
     const themeText = document.getElementById('theme-text');
 
     // --- ПЕРЕМЕННЫЕ ДЛЯ ЗАПИСИ "КРУЖОЧКОВ" (ВИДЕО) ---
-    const imageInputLabel = document.querySelector('label[for="image-upload"]');
+    // --- ОБНОВЛЕННЫЕ ПЕРЕМЕННЫЕ ---
+    const cameraBtn = document.getElementById('camera-btn'); // Новая кнопка
     const imageInput = document.getElementById('image-upload');
+    let wasLongPress = false; // Новый флаг для разделения кликов
     const videoRecordOverlay = document.getElementById('video-record-overlay');
     const recordPreview = document.getElementById('record-preview');
     const recordTimeText = document.getElementById('record-time-text');
@@ -1059,21 +1061,19 @@
     // --- ОБРАБОТЧИКИ ЗАЖАТИЯ КНОПКИ (Mouse & Touch) ---
 
     // --- ОБРАБОТЧИКИ ЗАЖАТИЯ И СВАЙПА ВВЕРХ (Hands-free) ---
-
     const handleStartPress = (e) => {
         if (isHolding || isRecordingCircle) return;
-        e.preventDefault();
         
         isHolding = true;
-        isLocked = false; // Сбрасываем блокировку при новом нажатии
+        isLocked = false;
+        wasLongPress = false; // Сбрасываем флаг долгого нажатия
         
-        // Запоминаем начальную координату Y (работает и для мыши, и для тача)
         startY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
 
         pressTimer = setTimeout(() => {
             if (isHolding) {
+                wasLongPress = true; // Запоминаем, что это долгое нажатие!
                 startRecordingCircle();
-                // Показываем подсказку
                 lockIndicator.style.display = 'flex';
                 lockIndicator.style.background = 'rgba(0,0,0,0.6)';
                 lockIndicator.innerHTML = '<span style="font-size: 18px;">🔒</span><span>Вверх</span>';
@@ -1082,65 +1082,56 @@
     };
 
     const handleMove = (e) => {
-        // Если мы не записываем или уже заблокировали - ничего не делаем
         if (!isHolding || !isRecordingCircle || isLocked) return;
-
         const currentY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
-        const deltaY = startY - currentY; // Расстояние сдвига (положительное, если тянем вверх)
-
-        // Если потянули вверх на 60 пикселей — фиксируем замок!
+        const deltaY = startY - currentY; 
+        
         if (deltaY > 60) {
             isLocked = true;
-            
-            // Визуально подтверждаем блокировку (зеленый цвет)
             lockIndicator.style.background = '#4ade80';
             lockIndicator.innerHTML = '<span style="font-size: 18px; color: black;">✅</span><span style="color: black; font-weight: bold;">Зафиксировано</span>';
-            
-            // Прячем подсказку через 1.5 секунды
-            setTimeout(() => {
-                lockIndicator.style.display = 'none';
-            }, 1500);
+            setTimeout(() => { lockIndicator.style.display = 'none'; }, 1500);
         }
     };
 
     const handleEndPress = (e) => {
         clearTimeout(pressTimer);
         
-        // Если это случайный клик по экрану - игнорируем
         if (!isHolding) return;
-        
         isHolding = false;
         lockIndicator.style.display = 'none';
 
         if (isRecordingCircle) {
-            e.preventDefault();
-            
-            // ТЕЛЕГРАМ-ЛОГИКА: 
             if (!isLocked) {
-                // Если мы НЕ зафиксировали запись свайпом вверх, 
-                // то отпускание пальца = команда "СТОП И ОТПРАВИТЬ".
-                // Гениальный трюк: мы просто симулируем клик по нашей уже готовой кнопке!
-                recordStopBtn.click(); 
+                recordStopBtn.click(); // Останавливаем запись
             }
-            // Если isLocked === true, мы ничего не делаем. 
-            // Окно останется висеть, и пользователь сможет нажать Паузу или Стоп сам.
-            
-        } else {
-            // Если продержали меньше 500мс - это обычный клик (выбор фото)
-            imageInput.click();
         }
+        // МЫ УБРАЛИ ОТСЮДА imageInput.click(), чтобы браузер не ругался
     };
 
     // --- НАЗНАЧАЕМ СЛУШАТЕЛИ ---
-    // Start вешаем на саму кнопку 📷
-    imageInputLabel.addEventListener('mousedown', handleStartPress);
-    imageInputLabel.addEventListener('touchstart', handleStartPress, { passive: false });
+    
+    // Обрабатываем старт зажатия на новой кнопке
+    cameraBtn.addEventListener('mousedown', handleStartPress);
+    cameraBtn.addEventListener('touchstart', handleStartPress, { passive: true });
+    
+    // Блокируем вызов меню копирования текста на телефонах при долгом нажатии
+    cameraBtn.addEventListener('contextmenu', e => e.preventDefault());
 
-    // Move и End вешаем на window! 
-    // Это нужно, чтобы палец/курсор не "потерялся", если увести его далеко от кнопки
+    // МАГИЯ ДЛЯ КОРОТКОГО КЛИКА (ФОТО)
+    cameraBtn.addEventListener('click', () => {
+        if (wasLongPress) {
+            // Если мы только что отпустили кнопку после записи видео - игнорируем клик
+            wasLongPress = false;
+            return;
+        }
+        // Это был быстрый короткий клик! Внутри события "click" браузер 100% разрешит открыть файлы.
+        imageInput.click();
+    });
+
+    // Глобальные слушатели для движений и отпускания
     window.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleEndPress);
-    
     window.addEventListener('touchmove', handleMove, { passive: false });
     window.addEventListener('touchend', handleEndPress);
     
