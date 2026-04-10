@@ -896,6 +896,8 @@
             videoRecordOverlay.classList.add('show');
             currentMicTrack = stream.getAudioTracks()[0];
 
+            // ДОБАВИТЬ ЭТУ СТРОКУ (Принудительно запускает видео, защищая от черного экрана):
+            recordPreview.play().catch(e => console.error("Ошибка автозапуска:", e));
             // 1. МАГИЯ: Заливаем холст черным ДО старта записи!
             // Это гарантирует, что MediaRecorder не сломается от пустого кадра
             ctx.fillStyle = '#000';
@@ -1006,7 +1008,6 @@
     }
 
     // Обработчик кнопки СМЕНЫ КАМЕРЫ
-    // Обработчик кнопки СМЕНЫ КАМЕРЫ
     recordSwitchCamBtn.addEventListener('click', async () => {
         if (!isRecordingCircle) return;
         const newFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
@@ -1017,14 +1018,19 @@
                 video: { facingMode: newFacingMode, width: { ideal: 640 }, height: { ideal: 640 } }
             });
             
-            const newVideoTrack = newVideoStream.getVideoTracks()[0];
-            const currentCameraStream = recordPreview.srcObject;
-            const oldVideoTrack = currentCameraStream.getVideoTracks()[0];
+            // Запоминаем старый поток, чтобы позже выключить лампочку камеры
+            const oldStream = recordPreview.srcObject;
             
-            // Подменяем трек в элементе ПРЕДПРОСМОТРА
-            currentCameraStream.removeTrack(oldVideoTrack);
-            currentCameraStream.addTrack(newVideoTrack);
-            oldVideoTrack.stop(); // Выключаем старую камеру
+            // МАГИЯ: Мы больше не ковыряем треки! Просто отдаем плееру новый поток целиком.
+            recordPreview.srcObject = newVideoStream;
+            
+            // Принудительно запускаем новую камеру
+            await recordPreview.play().catch(e => console.error(e));
+            
+            // Выключаем старую камеру
+            if (oldStream) {
+                oldStream.getVideoTracks().forEach(track => track.stop());
+            }
             
             currentFacingMode = newFacingMode;
             if (currentFacingMode === 'user') {
@@ -1032,7 +1038,8 @@
             } else {
                 recordPreview.classList.remove('mirrored');
             }
-            // Canvas продолжает рисовать, рекордер продолжает писать. Бесшовно!
+            // Холст (Canvas) продолжает рисовать, так как он привязан к элементу recordPreview.
+            // Склейка произойдет идеально бесшовно!
         } catch (err) {
             console.error("Ошибка при смене камеры:", err);
         }
