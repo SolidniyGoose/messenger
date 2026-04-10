@@ -794,28 +794,44 @@
                 </div>
             `;
 
+            // Управление анимацией и плеером (Бронебойный JS-метод)
             setTimeout(() => {
                 const videoNode = msgDiv.querySelector('video');
                 if (videoNode) {
                     
-                    // --- НОВАЯ ЛОГИКА АНИМАЦИИ ---
-                    // Отслеживаем системные события плеера
-                    videoNode.addEventListener('play', () => videoNode.classList.add('is-playing'));
-                    videoNode.addEventListener('pause', () => videoNode.classList.remove('is-playing'));
-                    videoNode.addEventListener('ended', () => videoNode.classList.remove('is-playing'));
+                    // 1. Задаем плавность прямо в элемент
+                    videoNode.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2), box-shadow 0.3s ease';
+                    videoNode.style.position = 'relative';
 
-                    // Так как стоит autoplay, проверяем, не запустилось ли оно уже
-                    if (!videoNode.paused) {
-                        videoNode.classList.add('is-playing');
-                    }
+                    // Функция УВЕЛИЧЕНИЯ (Play)
+                    const playAnim = () => {
+                        videoNode.style.transform = 'scale(1.08)';
+                        videoNode.style.boxShadow = '0 10px 25px rgba(0,0,0,0.5)';
+                        videoNode.style.zIndex = '10';
+                    };
 
-                    // Оставляем управление паузой по клику
+                    // Функция ВОЗВРАТА (Pause)
+                    const pauseAnim = () => {
+                        videoNode.style.transform = 'scale(1)';
+                        videoNode.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+                        videoNode.style.zIndex = '1';
+                    };
+
+                    // Вешаем слушатели на системные события плеера
+                    videoNode.addEventListener('play', playAnim);
+                    videoNode.addEventListener('pause', pauseAnim);
+                    videoNode.addEventListener('ended', pauseAnim);
+
+                    // Если видео уже начало играть из-за autoplay
+                    if (!videoNode.paused) playAnim();
+
+                    // Клик по видео ставит паузу/плей
                     videoNode.onclick = () => {
                         if (videoNode.paused) videoNode.play();
                         else videoNode.pause();
                     };
                 }
-            }, 0);
+            }, 50); // Чуть увеличили задержку для надежности
 
         } else {
             // === СТАНДАРТНАЯ ОТРИСОВКА (Текст, Картинки, Файлы, Аудио) ===

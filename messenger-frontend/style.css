@@ -328,28 +328,32 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 
 /* --- СТИЛИ ДЛЯ ЗАПИСИ "КРУЖОЧКОВ" (ВИДЕО) --- */
 #video-record-overlay {
-    display: none; 
+    /* ЗАМЕНИТЕ display: none; на эти три строчки: */
+    display: flex;
+    visibility: hidden;
+    pointer-events: none; 
+    
     position: fixed; 
     top: 0; 
     left: 0; 
     width: 100vw; 
     height: 100vh;
     background: rgba(0, 0, 0, 0.7); 
-    z-index: 20001; /* Чуть выше, чем image-viewer */
+    z-index: 20001;
     justify-content: center; 
     align-items: center;
     opacity: 0; 
-    transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease, visibility 0.3s; /* Обновили transition */
     cursor: auto;
     overflow: hidden;
-
-    /* ЭФФЕКТ РАЗМЫТИЯ ЗАДНЕГО ПЛАНА */
     backdrop-filter: blur(15px);
     -webkit-backdrop-filter: blur(15px);
 }
 
 #video-record-overlay.show { 
-    display: flex; 
+    /* ЗАМЕНИТЕ display: flex; на эти две строчки: */
+    visibility: visible;
+    pointer-events: auto;
     opacity: 1; 
 }
 
