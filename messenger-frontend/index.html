@@ -87,6 +87,9 @@
     <div class="messages" id="messages-list"></div>
 
     <div class="input-area-wrapper">
+        <span style="font-size: 18px;">🔒</span>
+            <span>Вверх</span>
+        </div>
         <div class="input-area">
             <input type="file" id="image-upload" accept="image/*" style="display: none;">
             <input type="file" id="file-upload" style="display: none;">
@@ -132,6 +135,10 @@
     const recordCanvas = document.createElement('canvas');
     recordCanvas.width = 320;
     recordCanvas.height = 320;
+    // Переменные для свайпа и фиксации (Hands-free)
+    let startY = 0;
+    let isLocked = false;
+    const lockIndicator = document.getElementById('lock-indicator');
     
     // Бронебойный фикс для телефонов: делаем его реальным размером, но абсолютно невидимым
     recordCanvas.style.position = 'absolute';
@@ -143,6 +150,7 @@
     recordCanvas.style.zIndex = '-1000'; // Прячем глубоко под сайт
     recordCanvas.style.pointerEvents = 'none';
     document.body.appendChild(recordCanvas); // Добавляем на страницу
+    
     
     const ctx = recordCanvas.getContext('2d', { willReadFrequently: true });
     let currentMicTrack;
@@ -1050,45 +1058,91 @@
 
     // --- ОБРАБОТЧИКИ ЗАЖАТИЯ КНОПКИ (Mouse & Touch) ---
 
-    // Событие НАЧАЛА зажатия
+    // --- ОБРАБОТЧИКИ ЗАЖАТИЯ И СВАЙПА ВВЕРХ (Hands-free) ---
+
     const handleStartPress = (e) => {
-        // Если кликнули, а не зажали (short click), даем сработать input file (default)
         if (isHolding || isRecordingCircle) return;
-        
-        // Предотвращаем стандартное поведение (drag)
         e.preventDefault();
         
         isHolding = true;
-        // Запускаем таймер на 500мс. Если продержали дольше - это зажатие.
+        isLocked = false; // Сбрасываем блокировку при новом нажатии
+        
+        // Запоминаем начальную координату Y (работает и для мыши, и для тача)
+        startY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+
         pressTimer = setTimeout(() => {
-            if (isHolding) startRecordingCircle();
+            if (isHolding) {
+                startRecordingCircle();
+                // Показываем подсказку
+                lockIndicator.style.display = 'flex';
+                lockIndicator.style.background = 'rgba(0,0,0,0.6)';
+                lockIndicator.innerHTML = '<span style="font-size: 18px;">🔒</span><span>Вверх</span>';
+            }
         }, 500);
     };
 
-    // Событие ОКОНЧАНИЯ зажатия
-    const handleEndPress = (e) => {
-        // Очищаем таймер, если отпустили раньше 500мс
-        clearTimeout(pressTimer);
-        isHolding = false;
+    const handleMove = (e) => {
+        // Если мы не записываем или уже заблокировали - ничего не делаем
+        if (!isHolding || !isRecordingCircle || isLocked) return;
 
-        // Если шла запись кружка — МЫ БОЛЬШЕ НЕ ОСТАНАВЛИВАЕМ ЗДЕСЬ
+        const currentY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        const deltaY = startY - currentY; // Расстояние сдвига (положительное, если тянем вверх)
+
+        // Если потянули вверх на 60 пикселей — фиксируем замок!
+        if (deltaY > 60) {
+            isLocked = true;
+            
+            // Визуально подтверждаем блокировку (зеленый цвет)
+            lockIndicator.style.background = '#4ade80';
+            lockIndicator.innerHTML = '<span style="font-size: 18px; color: black;">✅</span><span style="color: black; font-weight: bold;">Зафиксировано</span>';
+            
+            // Прячем подсказку через 1.5 секунды
+            setTimeout(() => {
+                lockIndicator.style.display = 'none';
+            }, 1500);
+        }
+    };
+
+    const handleEndPress = (e) => {
+        clearTimeout(pressTimer);
+        
+        // Если это случайный клик по экрану - игнорируем
+        if (!isHolding) return;
+        
+        isHolding = false;
+        lockIndicator.style.display = 'none';
+
         if (isRecordingCircle) {
-            e.preventDefault(); 
+            e.preventDefault();
+            
+            // ТЕЛЕГРАМ-ЛОГИКА: 
+            if (!isLocked) {
+                // Если мы НЕ зафиксировали запись свайпом вверх, 
+                // то отпускание пальца = команда "СТОП И ОТПРАВИТЬ".
+                // Гениальный трюк: мы просто симулируем клик по нашей уже готовой кнопке!
+                recordStopBtn.click(); 
+            }
+            // Если isLocked === true, мы ничего не делаем. 
+            // Окно останется висеть, и пользователь сможет нажать Паузу или Стоп сам.
+            
         } else {
-            // Обычный клик
+            // Если продержали меньше 500мс - это обычный клик (выбор фото)
             imageInput.click();
         }
     };
 
-    // Вешаем обработчики на лейбл
+    // --- НАЗНАЧАЕМ СЛУШАТЕЛИ ---
+    // Start вешаем на саму кнопку 📷
     imageInputLabel.addEventListener('mousedown', handleStartPress);
-    imageInputLabel.addEventListener('mouseup', handleEndPress);
-    imageInputLabel.addEventListener('mouseleave', handleEndPress); // Отпустили за пределами
+    imageInputLabel.addEventListener('touchstart', handleStartPress, { passive: false });
 
-    // Поддержка Touch (для мобильных)
-    imageInputLabel.addEventListener('touchstart', handleStartPress);
-    imageInputLabel.addEventListener('touchend', handleEndPress);
-    imageInputLabel.addEventListener('touchcancel', handleEndPress);
+    // Move и End вешаем на window! 
+    // Это нужно, чтобы палец/курсор не "потерялся", если увести его далеко от кнопки
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleEndPress);
+    
+    window.addEventListener('touchmove', handleMove, { passive: false });
+    window.addEventListener('touchend', handleEndPress);
     
     // --- 6. ЗАПИСЬ И ОТПРАВКА ГОЛОСОВЫХ СООБЩЕНИЙ ---
     const micBtn = document.getElementById('mic-btn');
