@@ -908,18 +908,27 @@
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, recordCanvas.width, recordCanvas.height);
 
-                if (recordPreview.videoWidth > 0) {
-                    ctx.save();
-                    if (currentFacingMode === 'user') {
-                        ctx.translate(recordCanvas.width, 0);
-                        ctx.scale(-1, 1);
+                // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: 
+                // readyState >= 2 означает, что у видео уже есть реальные пиксели для отрисовки
+                if (recordPreview.readyState >= 2 && recordPreview.videoWidth > 0) {
+                    try {
+                        ctx.save();
+                        if (currentFacingMode === 'user') {
+                            ctx.translate(recordCanvas.width, 0);
+                            ctx.scale(-1, 1);
+                        }
+                        const size = Math.min(recordPreview.videoWidth, recordPreview.videoHeight);
+                        const x = (recordPreview.videoWidth - size) / 2;
+                        const y = (recordPreview.videoHeight - size) / 2;
+                        ctx.drawImage(recordPreview, x, y, size, size, 0, 0, recordCanvas.width, recordCanvas.height);
+                        ctx.restore();
+                    } catch (e) {
+                        // Если браузер всё же ругнется на пустой кадр - просто игнорируем,
+                        // цикл продолжит работу и нарисует следующий кадр!
                     }
-                    const size = Math.min(recordPreview.videoWidth, recordPreview.videoHeight);
-                    const x = (recordPreview.videoWidth - size) / 2;
-                    const y = (recordPreview.videoHeight - size) / 2;
-                    ctx.drawImage(recordPreview, x, y, size, size, 0, 0, recordCanvas.width, recordCanvas.height);
-                    ctx.restore();
                 }
+                
+                // Запускаем следующий кадр
                 drawFrameId = requestAnimationFrame(drawToCanvas);
             }
             drawToCanvas();
