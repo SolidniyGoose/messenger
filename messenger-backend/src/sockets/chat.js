@@ -37,6 +37,7 @@ module.exports = (io) => {
                     // 1. Сохраняем в БД с привязкой к groupId
                     await prisma.message.create({
                         data: {
+                            id: payload.id, // <--- НОВОЕ ПОЛЕ
                             sender: payload.sender,
                             groupId: payload.groupId,
                             secretBox: payload.secretBox
@@ -64,6 +65,7 @@ module.exports = (io) => {
                     // === СТАРАЯ ЛОГИКА ДЛЯ ЛИЧНЫХ ЧАТОВ ===
                     await prisma.message.create({
                         data: {
+                            id: payload.id, // <--- НОВОЕ ПОЛЕ
                             sender: payload.sender,
                             recipient: payload.recipient,
                             secretBox: payload.secretBox
@@ -78,6 +80,30 @@ module.exports = (io) => {
             } catch (e) {
                 console.error("Ошибка при отправке сообщения:", e);
             }
+        });
+
+        // --- НОВОЕ: УДАЛЕНИЕ СООБЩЕНИЯ ---
+        socket.on('delete_message', async (data) => {
+            try {
+                // 1. Удаляем из базы данных
+                await prisma.message.delete({ where: { id: data.messageId } });
+                
+                // 2. Рассылаем команду на удаление нужным людям
+                if (data.isGroup) {
+                    const group = await prisma.group.findUnique({ where: { id: data.groupId }, include: { members: true }});
+                    if (group) {
+                        group.members.forEach(m => {
+                            const sId = onlineUsers.get(m.username);
+                            if (sId) io.to(sId).emit('message_deleted', data.messageId);
+                        });
+                    }
+                } else {
+                    const recipientSocketId = onlineUsers.get(data.recipient);
+                    const senderSocketId = onlineUsers.get(data.sender);
+                    if (recipientSocketId) io.to(recipientSocketId).emit('message_deleted', data.messageId);
+                    if (senderSocketId) io.to(senderSocketId).emit('message_deleted', data.messageId); // Отправляем и себе для синхронизации
+                }
+            } catch (e) { console.error("Ошибка при удалении сообщения:", e); }
         });
 
         // --- НОВОЕ: ОБРАБОТКА ПРОЧИТАННЫХ СООБЩЕНИЙ ---

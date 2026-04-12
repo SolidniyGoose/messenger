@@ -112,6 +112,15 @@
     </div>
 </div>
 
+<div id="msg-context-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 4000; justify-content: center; align-items: flex-end; backdrop-filter: blur(2px);">
+    <div style="background: var(--bg-sidebar); width: 100%; max-width: 400px; border-radius: 20px 20px 0 0; padding: 20px; display: flex; flex-direction: column; gap: 10px; animation: slideUp 0.3s ease;">
+        <button id="ctx-reply-btn" style="padding: 15px; background: var(--input-bg); border: none; border-radius: 12px; color: var(--text-main); font-size: 16px; text-align: left; cursor: pointer;">↩️ Ответить</button>
+        <button id="ctx-delete-btn" style="padding: 15px; background: var(--input-bg); border: none; border-radius: 12px; color: #ff4d4d; font-size: 16px; text-align: left; cursor: pointer;">🗑️ Удалить у всех</button>
+        <button id="ctx-cancel-btn" style="padding: 15px; background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; margin-top: 5px;">Отмена</button>
+    </div>
+</div>
+<style> @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } } </style>
+
 <div class="backdrop" id="backdrop"></div>
 
 <div class="drawer" id="drawer">
@@ -156,8 +165,12 @@
     <div class="messages" id="messages-list"></div>
 
     <div class="input-area-wrapper">
-        <span style="font-size: 18px;">🔒</span>
-            <span>Вверх</span>
+        <div id="reply-banner" style="display: none; padding: 10px 15px; background: rgba(0,0,0,0.2); border-left: 3px solid var(--primary-color); align-items: center; justify-content: space-between; border-radius: 10px 10px 0 0;">
+            <div style="display: flex; flex-direction: column; overflow: hidden;">
+                <span id="reply-sender" style="color: var(--primary-color); font-weight: 600; font-size: 13px;">Имя</span>
+                <span id="reply-text" style="color: var(--text-muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Текст</span>
+            </div>
+            <button id="cancel-reply-btn" style="background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer;">&times;</button>
         </div>
         <div class="input-area">
             <input type="file" id="image-upload" accept="image/*" style="display: none;">
@@ -171,6 +184,7 @@
             <input type="text" id="message-input" placeholder="Написать сообщение..." autocomplete="off">
             <button id="send-btn" aria-label="Отправить">↑</button>
         </div>
+        
     </div>
 </div>
 
@@ -210,6 +224,11 @@
     let startY = 0;
     let isLocked = false;
     const lockIndicator = document.getElementById('lock-indicator');
+
+    // --- ПЕРЕМЕННЫЕ ДЛЯ ОТВЕТОВ И УДАЛЕНИЯ ---
+    let activeReply = null; // Хранит данные сообщения, на которое мы отвечаем
+    let selectedMessageId = null; // Хранит ID сообщения, по которому мы кликнули
+    const replyBanner = document.getElementById('reply-banner');
     
     // Бронебойный фикс для телефонов: делаем его реальным размером, но абсолютно невидимым
     recordCanvas.style.position = 'absolute';
@@ -575,7 +594,7 @@
                         if (decryptedBuffer) {
                             const text = bufferToText(decryptedBuffer);
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
-                            displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead);
+                            displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
                         }
                     } else {
                         // --- ИСПОЛЬЗУЕМ КЭШ ДЛЯ ТЯЖЕЛЫХ ФАЙЛОВ ---
@@ -583,11 +602,11 @@
                         
                         if (mediaUrl) {
                             if (box.type === 'AUDIO') {
-                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false); 
+                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo);
                             } else if (box.type === 'VIDEO_CIRCLE') {
-                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true); 
+                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo);
                             } else {
-                                displayMessage(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
+                                displayMessage(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
                             }
                         }
                     }
@@ -1444,14 +1463,22 @@
 
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ ---
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ВСЕ ФОРМАТЫ) ---
-    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false) {
+    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null) {
         const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         msgDiv.className = `message ${className}`;
+        if (messageId) msgDiv.id = `msg-${messageId}`; // Назначаем ID элементу
 
-        let statusHtml = '';
-        if (className === 'my-message') {
-            statusHtml = `<span class="msg-status ${isRead ? 'status-read' : 'status-sent'}">${isRead ? '✓✓' : '✓'}</span>`;
+        let statusHtml = className === 'my-message' ? `<span class="msg-status ${isRead ? 'status-read' : 'status-sent'}">${isRead ? '✓✓' : '✓'}</span>` : '';
+
+        // --- ГЕНЕРИРУЕМ БЛОК ОТВЕТА ВНУТРИ СООБЩЕНИЯ ---
+        let replyHtml = '';
+        if (replyData) {
+            replyHtml = `
+            <div style="background: rgba(0,0,0,0.1); border-left: 3px solid var(--primary-color); padding: 5px 10px; border-radius: 4px; margin-bottom: 8px; font-size: 12px; opacity: 0.8; cursor: pointer;">
+                <b style="color: var(--primary-color);">${replyData.sender}</b><br>
+                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 200px;">${replyData.text}</span>
+            </div>`;
         }
 
         // === БРОНЕБОЙНАЯ ОТРИСОВКА КРУЖОЧКОВ ===
@@ -1465,7 +1492,7 @@
             msgDiv.style.marginBottom = '15px';
 
             // ДОБАВИЛИ КЛАСС class="circle-video-player" в тег <video>
-            msgDiv.innerHTML = `
+            msgDiv.innerHTML = `${replyHtml}
                 <div style="position: relative; width: 100%; height: 100%;">
                     <video src="${content}" class="circle-video-player" playsinline autoplay loop muted style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: pointer; display: block; background: #000;"></video>
                     
@@ -1516,31 +1543,33 @@
             }, 50); // Чуть увеличили задержку для надежности
 
         } else {
-            // === СТАНДАРТНАЯ ОТРИСОВКА (Текст, Картинки, Файлы, Аудио) ===
+            // === СТАНДАРТНАЯ ОТРИСОВКА ===
             let innerContent = content;
+            if (isAudio) innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
+            else if (isImage) innerContent = `<img src="${content}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" />`;
+            else if (fileName) innerContent = `<div style="display: flex; align-items: center; gap: 10px;">📄 <b>${fileName}</b></div>`;
+            else msgDiv.classList.add('text-message');
 
-            if (isAudio) {
-                innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
-            } else if (isImage) {
-                innerContent = `<img src="${content}" alt="${fileName}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" />`;
-                setTimeout(() => {
-                    const imgNode = msgDiv.querySelector('.chat-image');
-                    if (imgNode) imgNode.onclick = () => viewImage(content);
-                }, 0);
-            } else if (fileName) {
-                innerContent = `
-                    <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.1); padding: 10px; border-radius: 8px;">
-                        <span style="font-size: 24px;">📄</span>
-                        <a href="${content}" download="${fileName}" style="color: inherit; text-decoration: none; font-weight: bold; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;">${fileName}</a>
-                    </div>
-                `;
-            } else {
-                msgDiv.classList.add('text-message');
-            }
-
-            // Добавляем обычную приписку со временем для стандартных сообщений
-            msgDiv.innerHTML = `${innerContent} <span class="meta">${timeString}${statusHtml}</span>`;
+            msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${timeString}${statusHtml}</span>`;
         }
+
+        // --- ВЕШАЕМ КЛИК ДЛЯ МЕНЮ СООБЩЕНИЯ ---
+        msgDiv.addEventListener('click', (e) => {
+            if (e.target.tagName === 'IMG' || e.target.tagName === 'AUDIO' || e.target.tagName === 'VIDEO') return; // Не открываем меню, если кликнули на саму картинку/плеер
+            
+            selectedMessageId = messageId;
+            document.getElementById('msg-context-modal').style.display = 'flex';
+            
+            // Скрываем кнопку "Удалить", если сообщение чужое
+            document.getElementById('ctx-delete-btn').style.display = className === 'my-message' ? 'block' : 'none';
+            
+            // Подготавливаем текст для ответа
+            let previewText = (isImage || isCircleVideo || fileName || isAudio) ? "Медиафайл" : content;
+            let senderName = className === 'my-message' ? myUsername : (msgDiv.querySelector('b') ? msgDiv.querySelector('b').textContent.replace(':','') : currentChatUser);
+            
+            document.getElementById('reply-sender').textContent = senderName;
+            document.getElementById('reply-text').textContent = previewText;
+        });
 
         messagesList.appendChild(msgDiv);
         messagesList.scrollTop = messagesList.scrollHeight;
@@ -1548,6 +1577,7 @@
     // --- 3. ОТПРАВКА ОБЫЧНОГО СООБЩЕНИЯ ---
     async function sendMessage() {
         const text = messageInput.value.trim();
+        const msgId = crypto.randomUUID(); // Генерируем уникальный ID на клиенте
         if (!currentSharedKey || !currentChatUser) return alert("Сначала выберите собеседника слева!");
 
         if (text) {
@@ -1557,19 +1587,76 @@
             // ТРЮК: Прячем тип сообщения прямо в secretBox, чтобы не менять БД!
             // ВАЖНО: Браузер должен правильно запаковать группу!
             const payload = {
+                id: msgId, // Отправляем ID на сервер
                 sender: myUsername,
                 recipient: currentChatIsGroup ? null : currentChatUser,
                 groupId: currentChatIsGroup ? currentChatUser : null,
                 isGroup: currentChatIsGroup,
-                secretBox: { ...encryptedData, type: 'TEXT' }
+                secretBox: { 
+                    ...encryptedData, 
+                    type: 'TEXT',
+                    replyTo: activeReply // Прикрепляем данные ответа, если они есть
+                }
             };
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
-            displayMessage(text, 'my-message', new Date(), false, '', false);
+            displayMessage(text, 'my-message', new Date(), false, '', false, false, false, msgId, activeReply);
             messageInput.value = '';
+            activeReply = null;
+            replyBanner.style.display = 'none';
             if (window.innerWidth > 768) messageInput.focus(); 
         }
     }
+
+    // --- ЛОГИКА МЕНЮ СООБЩЕНИЙ ---
+    const msgCtxModal = document.getElementById('msg-context-modal');
+
+    // Кнопка "Отмена"
+    document.getElementById('ctx-cancel-btn').addEventListener('click', () => msgCtxModal.style.display = 'none');
+    msgCtxModal.addEventListener('click', (e) => { if (e.target === msgCtxModal) msgCtxModal.style.display = 'none'; });
+
+    // Кнопка "Ответить"
+    document.getElementById('ctx-reply-btn').addEventListener('click', () => {
+        activeReply = {
+            sender: document.getElementById('reply-sender').textContent,
+            text: document.getElementById('reply-text').textContent
+        };
+        replyBanner.style.display = 'flex';
+        msgCtxModal.style.display = 'none';
+        messageInput.focus();
+    });
+
+    // Отмена ответа (крестик на баннере)
+    document.getElementById('cancel-reply-btn').addEventListener('click', () => {
+        activeReply = null;
+        replyBanner.style.display = 'none';
+    });
+
+    // Кнопка "Удалить"
+    document.getElementById('ctx-delete-btn').addEventListener('click', () => {
+        if (selectedMessageId) {
+            socket.emit('delete_message', {
+                messageId: selectedMessageId,
+                isGroup: currentChatIsGroup,
+                groupId: currentChatIsGroup ? currentChatUser : null,
+                recipient: currentChatUser,
+                sender: myUsername
+            });
+            msgCtxModal.style.display = 'none';
+        }
+    });
+
+    // Слушатель от сервера: Удаление сообщения из интерфейса
+    socket.on('message_deleted', (msgId) => {
+        const msgEl = document.getElementById(`msg-${msgId}`);
+        if (msgEl) {
+            // Красивая анимация удаления
+            msgEl.style.transition = '0.3s';
+            msgEl.style.transform = 'scale(0.8)';
+            msgEl.style.opacity = '0';
+            setTimeout(() => msgEl.remove(), 300);
+        }
+    });
 
     // --- 5. ОТПРАВКА КАРТИНОК И ФАЙЛОВ ---
     function readFileAsArrayBuffer(file) {
@@ -1591,7 +1678,9 @@
             console.log(`🔒 Шифрование байтов файла...`);
             const encryptedData = await encryptMessage(dataBuffer, currentSharedKey);
 
+            const msgId = crypto.randomUUID(); // Генерируем ID
             const payload = {
+                id: msgId, // Добавляем ID
                 sender: myUsername,
                 recipient: currentChatIsGroup ? null : currentChatUser,
                 groupId: currentChatIsGroup ? currentChatUser : null,
@@ -1600,14 +1689,18 @@
                     ...encryptedData, 
                     type: isImage ? 'IMAGE' : 'FILE',
                     fileName: file.name,
-                    mimeType: file.type 
+                    mimeType: file.type,
+                    replyTo: activeReply // Прикрепляем ответ
                 }
             };
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
             
             const fileUrl = URL.createObjectURL(file);
-            displayMessage(fileUrl, 'my-message', new Date(), isImage, file.name, false);
+            displayMessage(fileUrl, 'my-message', new Date(), isImage, file.name, false, false, false, msgId, activeReply);
+            // Сбрасываем ответ после отправки
+            activeReply = null;
+            replyBanner.style.display = 'none';
         } catch (error) {
             console.error("Ошибка при отправке файла:", error);
             alert("Не удалось зашифровать файл.");
@@ -1709,8 +1802,9 @@
                 const videoBlob = new Blob(circleVideoChunks, { type: safeMimeType });
                 const arrayBuffer = await videoBlob.arrayBuffer();
                 const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
-
+                const msgId = crypto.randomUUID();
                 const payload = {
+                    id: msgId,
                     sender: myUsername,
                     recipient: currentChatIsGroup ? null : currentChatUser,
                     groupId: currentChatIsGroup ? currentChatUser : null,
@@ -1718,13 +1812,14 @@
                     secretBox: { 
                         ...encryptedData, 
                         type: 'VIDEO_CIRCLE',
-                        mimeType: safeMimeType
+                        mimeType: safeMimeType,
+                        replyTo: activeReply // <--- ИСПРАВЛЕНА ОШИБКА
                     }
                 };
                 socket.emit('send_message', { text: JSON.stringify(payload) });
                 
                 const videoUrl = URL.createObjectURL(videoBlob);
-                displayMessage(videoUrl, 'my-message', new Date(), false, '', false, false, true);
+                displayMessage(videoUrl, 'my-message', new Date(), false, '', false, false, true, msgId, activeReply);
             };
 
             circleMediaRecorder.start(100); 
@@ -1904,7 +1999,8 @@
                         secretBox: { 
                             ...encryptedData, 
                             type: 'AUDIO',
-                            mimeType: 'audio/webm'
+                            mimeType: 'audio/webm',
+                            replyTo: activeReply // <--- Прикрепляем ответ
                         }
                     };
 
@@ -1912,13 +2008,15 @@
                     
                     const audioUrl = URL.createObjectURL(audioBlob);
                     // Передаем isAudio = true в самом конце
-                    displayMessage(audioUrl, 'my-message', new Date(), false, '', false, true);
+                    displayMessage(audioUrl, 'my-message', new Date(), false, '', false, true, false, msgId, activeReply);
                 };
 
                 mediaRecorder.start();
                 isRecording = true;
                 micBtn.classList.add('recording');
                 micBtn.textContent = '🛑'; // Меняем иконку на стоп
+                activeReply = null;
+                replyBanner.style.display = 'none';
             } catch (err) {
                 console.error("Ошибка микрофона:", err);
                 alert("Разрешите доступ к микрофону в настройках браузера!");
@@ -2016,19 +2114,19 @@
                 if (!box.type || box.type === 'TEXT') {
                     const text = bufferToText(decryptedBuffer);
                     const displayText = payload.isGroup ? senderPrefix + text : text;
-                    displayMessage(displayText, type, new Date(), false);
+                    displayMessage(displayText, type, new Date(), false, '', false, false, false, payload.id, box.replyTo);
                 } else if (box.type === 'AUDIO') {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, type, new Date(), false, '', false, true, false);
+                    displayMessage(url, type, new Date(), false, '', false, true, false, payload.id, box.replyTo);
                 } else if (box.type === 'VIDEO_CIRCLE') {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, type, new Date(), false, '', false, false, true);
+                    displayMessage(url, type, new Date(), false, '', false, false, true, payload.id, box.replyTo);
                 } else {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const fileUrl = URL.createObjectURL(blob);
-                    displayMessage(fileUrl, type, new Date(), box.type === 'IMAGE', box.fileName);
+                    displayMessage(fileUrl, type, new Date(), box.type === 'IMAGE', box.fileName, false, false, false, payload.id, box.replyTo);
                 }
                 
                 // ХИТРЫЙ ТРЮК С ГАЛОЧКАМИ:
