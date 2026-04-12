@@ -40,10 +40,17 @@ router.get('/:username', async (req, res) => {
 router.get('/', async (req, res) => {
     try {
         const users = await prisma.user.findMany({
-            select: { id: true, username: true, publicKey: true } // Сейфы не отдаем в общий список
+            select: { 
+                // УБРАЛИ id: true, так как его не существует
+                username: true, 
+                publicKey: true,
+                displayName: true, // НОВОЕ: Отдаем имя
+                avatar: true       // НОВОЕ: Отдаем аватарку
+            } 
         });
         res.json(users);
     } catch (error) {
+        console.error("Ошибка при получении списка пользователей:", error);
         res.status(500).json({ error: "Ошибка получения списка" });
     }
 });
