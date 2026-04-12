@@ -33,6 +33,23 @@ app.get('/api/history/:user1/:user2', async (req, res) => {
         res.status(500).json({ error: "Ошибка загрузки истории" });
     }
 });
+// --- ЭНДПОИНТ ДЛЯ ИСТОРИИ ГРУППОВОГО ЧАТА ---
+app.get('/api/history/group/:groupId', async (req, res) => {
+    try {
+        const messages = await prisma.message.findMany({
+            where: { 
+                groupId: req.params.groupId 
+            },
+            orderBy: { 
+                createdAt: 'asc' // Сортируем от старых к новым
+            }
+        });
+        res.json(messages);
+    } catch (error) {
+        console.error("Ошибка загрузки истории группы:", error);
+        res.status(500).json({ error: "Ошибка сервера" });
+    }
+});
 
 // --- ЭНДПОИНТ ДЛЯ СОЗДАНИЯ ГРУППЫ ---
 app.post('/api/groups/create', async (req, res) => {

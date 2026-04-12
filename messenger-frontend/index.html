@@ -425,12 +425,49 @@
 
             console.log("🔓 Ключ группы успешно расшифрован!");
             
-            // Заглушка (вместо неё мы скоро загрузим реальную историю сообщений!)
-            document.getElementById('messages-list').innerHTML = `
-                <div style="text-align:center; padding: 20px; color: var(--text-muted);">
-                    Вы успешно расшифровали ключ группы!<br>Отправка сообщений в разработке...
-                </div>
-            `;
+            // --- ЗАГРУЗКА И РАСШИФРОВКА ИСТОРИИ ГРУППЫ ---
+            document.getElementById('messages-list').innerHTML = ''; // Очищаем экран
+            
+            const histRes = await fetch(`/api/history/group/${group.id}`);
+            const history = await histRes.json();
+            
+            for (let msg of history) {
+                try {
+                    const box = msg.secretBox;
+                    // Взламываем сейф сообщения общим ключом группы!
+                    const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                    
+                    if (decryptedBuffer) {
+                        const type = msg.sender === myUsername ? 'my-message' : 'other-message';
+                        
+                        // Небольшой трюк: добавляем имя отправителя для чужих сообщений в группе
+                        const senderPrefix = (type === 'other-message') ? `<b>${msg.sender}:</b><br>` : '';
+                        
+                        if (!box.type || box.type === 'TEXT') {
+                            const text = bufferToText(decryptedBuffer);
+                            // Если это текст, добавляем имя (только для чужих)
+                            const displayText = type === 'other-message' ? senderPrefix + text : text;
+                            displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead);
+                        } else if (box.type === 'AUDIO') {
+                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                            const url = URL.createObjectURL(blob);
+                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, true, false); 
+                        } else if (box.type === 'VIDEO_CIRCLE') {
+                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                            const url = URL.createObjectURL(blob);
+                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, false, true); 
+                        } else {
+                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                            const fileUrl = URL.createObjectURL(blob);
+                            displayMessage(fileUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
+                        }
+                    }
+                } catch(e) { console.error("Ошибка расшифровки сообщения в истории:", e); }
+            }
+            
+            // Прокручиваем чат в самый низ
+            const messagesList = document.getElementById('messages-list');
+            messagesList.scrollTop = messagesList.scrollHeight;
 
         } catch (error) {
             console.error("Ошибка при расшифровке ключа группы:", error);
