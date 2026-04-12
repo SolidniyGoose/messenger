@@ -90,7 +90,7 @@ app.get('/api/users/:username/groups', async (req, res) => {
             select: {
                 id: true,
                 name: true,
-                // avatar - НЕ запрашиваем
+                avatar: true,
                 // members - НЕ запрашиваем (чтобы не тянуть тяжелые ключи)
                 _count: { select: { members: true } } // Магия Prisma: просим только КОЛИЧЕСТВО участников
             }

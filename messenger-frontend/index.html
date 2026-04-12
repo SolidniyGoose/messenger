@@ -472,9 +472,18 @@
         profiles: new Map(), // Для профилей собеседников (аватарки/имена)
         groups: new Map(),   // <--- НОВОЕ: Кэш для списков групп
         media: new Map(),    // Для расшифрованных файлов (фото, видео, аудио)
+        history: new Map(),  // <--- НОВОЕ: Кэш истории чатов
         PROFILE_TTL: 5 * 60 * 1000, // Профили храним 5 минут
         MEDIA_TTL: 10 * 60 * 1000   // Медиа файлы храним 10 минут
     };
+
+    // Помощник: добавляем новое сообщение в кэш, чтобы оно не исчезло при переключении чатов
+    function appendToHistoryCache(isGroup, chatId, messageObj) {
+        const cacheKey = isGroup ? `group_${chatId}` : `chat_${chatId}`;
+        if (APP_CACHE.history.has(cacheKey)) {
+            APP_CACHE.history.get(cacheKey).push(messageObj);
+        }
+    }
 
     // Сборщик мусора (Запускается каждую минуту и удаляет старье)
     setInterval(() => {
@@ -610,8 +619,18 @@
         
         if (currentSharedKey) {
             document.getElementById('messages-list').innerHTML = ''; 
-            const histRes = await fetch(`/api/history/${myUsername}/${user.username}`);
-            const history = await histRes.json();
+            
+            // --- УМНАЯ ЗАГРУЗКА (КЭШ ИЛИ СЕТЬ) ---
+            const cacheKey = `chat_${user.username}`;
+            let history;
+            if (APP_CACHE.history.has(cacheKey)) {
+                history = APP_CACHE.history.get(cacheKey); // Берем из памяти (0 трафика!)
+            } else {
+                const histRes = await fetch(`/api/history/${myUsername}/${user.username}`);
+                history = await histRes.json();
+                APP_CACHE.history.set(cacheKey, history); // Сохраняем на будущее
+            }
+
             const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
             for (let msg of history) {
                 // НОВОЕ: Если сообщение в нашем "черном списке", просто пропускаем его!
@@ -728,11 +747,21 @@
             console.log("🔓 Ключ группы успешно расшифрован!");
             
             // --- ЗАГРУЗКА И РАСШИФРОВКА ИСТОРИИ ГРУППЫ ---
-            document.getElementById('messages-list').innerHTML = ''; // Очищаем экран
+            // --- ЗАГРУЗКА И РАСШИФРОВКА ИСТОРИИ ГРУППЫ ---
+            document.getElementById('messages-list').innerHTML = ''; 
             
-            const histRes = await fetch(`/api/history/group/${group.id}`);
-            const history = await histRes.json();
+            const cacheKey = `group_${group.id}`;
+            let history;
+            if (APP_CACHE.history.has(cacheKey)) {
+                history = APP_CACHE.history.get(cacheKey); // Берем из памяти
+            } else {
+                const histRes = await fetch(`/api/history/group/${group.id}`);
+                history = await histRes.json();
+                APP_CACHE.history.set(cacheKey, history); // Сохраняем на будущее
+            }
+
             const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
+            // ... (дальше идет цикл for (let msg of history))
             
             for (let msg of history) {
                 // НОВОЕ: Если сообщение в нашем "черном списке", просто пропускаем его!
@@ -1784,6 +1813,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     replyTo: activeReply // Прикрепляем данные ответа, если они есть
                 }
             };
+            // --- НОВОЕ: СОХРАНЯЕМ В ЛОКАЛЬНУЮ ИСТОРИЮ ---
+            appendToHistoryCache(currentChatIsGroup, currentChatUser, {
+                id: msgId,
+                sender: myUsername,
+                secretBox: payload.secretBox,
+                createdAt: new Date().toISOString(),
+                isRead: false
+            });
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
             displayMessage(text, 'my-message', new Date(), false, '', false, false, false, msgId, activeReply);
@@ -1895,6 +1932,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     replyTo: activeReply // Прикрепляем ответ
                 }
             };
+
+            // --- НОВОЕ: СОХРАНЯЕМ В ЛОКАЛЬНУЮ ИСТОРИЮ ---
+            appendToHistoryCache(currentChatIsGroup, currentChatUser, {
+                id: msgId,
+                sender: myUsername,
+                secretBox: payload.secretBox,
+                createdAt: new Date().toISOString(),
+                isRead: false
+            });
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
             
@@ -2018,6 +2064,16 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                         replyTo: activeReply // <--- ИСПРАВЛЕНА ОШИБКА
                     }
                 };
+
+                // --- НОВОЕ: СОХРАНЯЕМ В ЛОКАЛЬНУЮ ИСТОРИЮ ---
+                appendToHistoryCache(currentChatIsGroup, currentChatUser, {
+                    id: msgId,
+                    sender: myUsername,
+                    secretBox: payload.secretBox,
+                    createdAt: new Date().toISOString(),
+                    isRead: false
+                });
+
                 socket.emit('send_message', { text: JSON.stringify(payload) });
                 
                 const videoUrl = URL.createObjectURL(videoBlob);
@@ -2205,6 +2261,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                             replyTo: activeReply // <--- Прикрепляем ответ
                         }
                     };
+                    
+                    // --- НОВОЕ: СОХРАНЯЕМ В ЛОКАЛЬНУЮ ИСТОРИЮ ---
+                    appendToHistoryCache(currentChatIsGroup, currentChatUser, {
+                        id: msgId,
+                        sender: myUsername,
+                        secretBox: payload.secretBox,
+                        createdAt: new Date().toISOString(),
+                        isRead: false
+                    });
 
                     socket.emit('send_message', { text: JSON.stringify(payload) });
                     
@@ -2349,6 +2414,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 }
             };
 
+            // --- НОВОЕ: СОХРАНЯЕМ В ЛОКАЛЬНУЮ ИСТОРИЮ ---
+            appendToHistoryCache(currentChatIsGroup, currentChatUser, {
+                id: msgId,
+                sender: myUsername,
+                secretBox: payload.secretBox,
+                createdAt: new Date().toISOString(),
+                isRead: false
+            });
+
             socket.emit('send_message', { text: JSON.stringify(payload) });
             
             // Отрисовываем локально (передаем массив URL вместо одного)
@@ -2380,7 +2454,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     socket.on('receive_message', async (data) => {
         try {
             const payload = JSON.parse(data.text);
-            
+            // --- НОВОЕ: СОХРАНЯЕМ В ЛОКАЛЬНУЮ ИСТОРИЮ ---
+            const senderForCache = payload.isGroup ? payload.groupId : payload.sender;
+            appendToHistoryCache(payload.isGroup, senderForCache, {
+                id: payload.id,
+                sender: payload.sender,
+                secretBox: payload.secretBox,
+                createdAt: new Date().toISOString(),
+                isRead: false
+            });
             // МАРШРУТИЗАЦИЯ
             if (payload.isGroup) {
                 if (payload.groupId !== currentChatUser) return; // Игнорируем, если открыт другой чат

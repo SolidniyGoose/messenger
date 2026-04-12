@@ -43,7 +43,8 @@ router.get('/', async (req, res) => {
             select: { 
                 username: true, 
                 publicKey: true,
-                displayName: true
+                displayName: true,
+                avatar: true // <--- ВЕРНУЛИ
                 // УБРАЛИ avatar: true (Теперь этот JSON будет весить 5 КБ вместо 250 КБ!)
             } 
         });
