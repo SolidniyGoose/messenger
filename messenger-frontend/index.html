@@ -51,6 +51,42 @@
         <button id="confirm-group-btn" style="display: none; margin-top: 15px; padding: 12px; background: var(--gradient-primary); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: bold;">Создать группу</button>
     </div>
 </div>
+<div id="chat-info-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
+    <div style="background: var(--bg-sidebar); width: 90%; max-width: 400px; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        
+        <div style="display: flex; justify-content: flex-end; padding: 15px;">
+            <button id="close-chat-info-btn" style="background: none; border: none; font-size: 28px; cursor: pointer; color: var(--text-muted); transition: 0.2s;">&times;</button>
+        </div>
+        
+        <div style="display: flex; flex-direction: column; align-items: center; padding: 0 20px 20px; border-bottom: 1px solid var(--border-color);">
+            <div id="info-avatar" style="width: 100px; height: 100px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: bold; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);"></div>
+            <h2 id="info-name" style="margin: 0 0 5px 0; color: var(--text-main); font-size: 24px;">Название</h2>
+            <span id="info-status" style="color: var(--primary-color); font-size: 14px; font-weight: 500;">статус</span>
+        </div>
+
+        <div id="info-members-section" style="display: none; flex-direction: column; max-height: 250px; overflow-y: auto; padding: 15px 20px; border-bottom: 1px solid var(--border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h4 style="margin: 0; color: var(--text-muted); font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Участники</h4>
+                <span id="info-members-count" style="color: var(--text-muted); font-size: 13px;"></span>
+            </div>
+            <div id="info-members-list" style="display: flex; flex-direction: column; gap: 12px;">
+                </div>
+        </div>
+        
+        <div style="padding: 15px 20px; display: flex; flex-direction: column; gap: 15px; background: rgba(0,0,0,0.1);">
+            <div style="display: flex; align-items: center; gap: 15px; color: var(--text-main); cursor: pointer; transition: 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-main)'">
+                <span style="font-size: 20px;">🖼️</span>
+                <span style="font-weight: 500;">Медиа, файлы и ссылки</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px; color: #ff4d4d; cursor: pointer; transition: 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+                <span style="font-size: 20px;">🚪</span>
+                <span style="font-weight: 500;">Покинуть чат</span>
+            </div>
+        </div>
+
+    </div>
+</div>
+
 <div class="backdrop" id="backdrop"></div>
 
 <div class="drawer" id="drawer">
@@ -86,7 +122,7 @@
 <div class="chat-area">
     <div class="chat-header">
         <button class="back-btn" id="back-btn" aria-label="Назад">←</button>
-        <div class="chat-header-info">
+        <div class="chat-header-info" style="cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
             <span class="chat-name">Глобальный чат</span>
             <span class="chat-status">онлайн</span>
         </div>
@@ -226,6 +262,86 @@
 
     backBtn.addEventListener('click', () => {
         document.body.classList.remove('mobile-chat-active');
+    });
+
+    // --- ЛОГИКА ОКНА ИНФОРМАЦИИ О ЧАТЕ (ПРОФИЛЬ / ГРУППА) ---
+    const chatHeaderInfo = document.querySelector('.chat-header-info');
+    const chatInfoModal = document.getElementById('chat-info-modal');
+    
+    chatHeaderInfo.addEventListener('click', async () => {
+        if (!currentChatUser) return; // Если чат не открыт, ничего не делаем
+        
+        const avatar = document.getElementById('info-avatar');
+        const nameEl = document.getElementById('info-name');
+        const statusEl = document.getElementById('info-status');
+        const membersSection = document.getElementById('info-members-section');
+        const membersList = document.getElementById('info-members-list');
+        const membersCount = document.getElementById('info-members-count');
+        
+        // Показываем окно сразу (с эффектом загрузки)
+        chatInfoModal.style.display = 'flex';
+        nameEl.textContent = "Загрузка...";
+        
+        // Проверяем, группа ли это (используем глобальный флаг, если он есть)
+        const isGroup = typeof currentChatIsGroup !== 'undefined' ? currentChatIsGroup : false;
+
+        if (isGroup) {
+            // --- ЭТО ГРУППА ---
+            avatar.innerHTML = "👥";
+            avatar.style.borderRadius = "35%"; // Квадратная аватарка для групп
+            
+            try {
+                // Запрашиваем актуальный список групп с сервера
+                const res = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
+                const groups = await res.json();
+                const activeGroup = groups.find(g => g.id === currentChatUser);
+                
+                if (activeGroup) {
+                    nameEl.textContent = activeGroup.name;
+                    statusEl.textContent = "Группа";
+                    membersCount.textContent = activeGroup.members.length;
+                    
+                    membersSection.style.display = 'flex';
+                    membersList.innerHTML = '';
+                    
+                    // Рендерим каждого участника
+                    activeGroup.members.forEach(m => {
+                        const isMe = m.username === myUsername;
+                        const mDiv = document.createElement('div');
+                        mDiv.style.cssText = "display: flex; align-items: center; gap: 15px;";
+                        mDiv.innerHTML = `
+                            <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px;">${m.username.charAt(0).toUpperCase()}</div>
+                            <div style="font-weight: 600; color: var(--text-main); font-size: 15px;">
+                                ${m.username} ${isMe ? '<span style="color: var(--text-muted); font-weight: normal;">(Вы)</span>' : ''}
+                            </div>
+                        `;
+                        membersList.appendChild(mDiv);
+                    });
+                }
+            } catch (e) {
+                console.error("Ошибка загрузки инфы о группе:", e);
+                nameEl.textContent = "Ошибка загрузки";
+            }
+        } else {
+            // --- ЭТО ЛИЧНЫЙ ЧАТ ---
+            nameEl.textContent = currentChatUser;
+            statusEl.textContent = "онлайн";
+            avatar.innerHTML = currentChatUser.charAt(0).toUpperCase();
+            avatar.style.borderRadius = "50%"; // Круглая аватарка для людей
+            membersSection.style.display = 'none'; // Прячем список участников
+        }
+    });
+
+    // Закрытие окна по крестику
+    document.getElementById('close-chat-info-btn').addEventListener('click', () => {
+        chatInfoModal.style.display = 'none';
+    });
+    
+    // Закрытие окна по клику на темный фон
+    chatInfoModal.addEventListener('click', (e) => {
+        if (e.target === chatInfoModal) {
+            chatInfoModal.style.display = 'none';
+        }
     });
 
     // --- КРИПТОГРАФИЯ (Web Crypto API) ---
