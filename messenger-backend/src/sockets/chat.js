@@ -4,9 +4,28 @@ const onlineUsers = new Map();
 
 module.exports = (io) => {
     io.on('connection', (socket) => {
-        socket.on('register_user', (username) => {
-            onlineUsers.set(username, socket.id);
+        
+        // --- ОБНОВЛЕННАЯ РЕГИСТРАЦИЯ СОКЕТА ---
+        socket.on('register_user', async (username) => {
+            try {
+                // Проверяем, существует ли пользователь в базе данных
+                const userExists = await prisma.user.findUnique({
+                    where: { username: username }
+                });
+
+                if (!userExists) {
+                    // Если базы нет (сделали clear.js), приказываем браузеру выйти!
+                    socket.emit('force_logout');
+                    return;
+                }
+
+                onlineUsers.set(username, socket.id);
+            } catch (e) {
+                console.error("Ошибка при проверке пользователя:", e);
+            }
         });
+
+        // ... (дальше идут ваши старые socket.on('send_message') и т.д.)
 
         socket.on('send_message', async (data) => {
             try {
