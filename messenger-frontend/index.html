@@ -602,6 +602,8 @@
         currentChatUser = user.username;
         currentChatIsGroup = false; // Обычный чат, не группа
         loadActiveChats(); 
+
+        updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮД
         
         currentSharedKey = await deriveSharedSecret(user.publicKey);
         
@@ -670,6 +672,8 @@
         currentChatUser = group.id; 
         currentChatIsGroup = true;  
         loadActiveChats(); 
+
+        updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮД
 
         try {
             // 1. Ищем НАШ личный сейф
