@@ -225,7 +225,7 @@ body {
 }
 
 /* ПАНЕЛЬ ВВОДА */
-.input-area-wrapper { padding: 15px 8%; background: transparent; opacity: 1;}
+.input-area-wrapper { padding: 0px 15px 15px 8%; background: transparent; opacity: 1;}
 .input-area {
     display: flex; background: var(--input-bg); border-radius: 24px;
     padding: 8px 15px; box-shadow: var(--shadow-md); align-items: center; gap: 10px; transition: background 0.3s;
