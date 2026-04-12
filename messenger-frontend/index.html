@@ -293,8 +293,9 @@
     const chatHeaderInfo = document.querySelector('.chat-header-info');
     const chatInfoModal = document.getElementById('chat-info-modal');
     
+    // --- ЛОГИКА ОКНА ИНФОРМАЦИИ О ЧАТЕ (БЕЗ МОРГАНИЯ) ---
     chatHeaderInfo.addEventListener('click', async () => {
-        if (!currentChatUser) return; // Если чат не открыт, ничего не делаем
+        if (!currentChatUser) return;
         
         const avatar = document.getElementById('info-avatar');
         const nameEl = document.getElementById('info-name');
@@ -304,23 +305,31 @@
         const membersCount = document.getElementById('info-members-count');
         const groupControls = document.getElementById('group-avatar-edit-controls');
         
-        // Показываем окно сразу (с эффектом загрузки)
-        chatInfoModal.style.display = 'flex';
-        nameEl.textContent = "Загрузка...";
-        
-        // Проверяем, группа ли это
         const isGroup = typeof currentChatIsGroup !== 'undefined' ? currentChatIsGroup : false;
+
+        // Открываем окно. Пока НИЧЕГО не пишем про "Загрузку", ждем проверки кэша.
+        chatInfoModal.style.display = 'flex';
 
         if (isGroup) {
             // --- ЭТО ГРУППА ---
-            groupControls.style.display = 'block'; // Показываем кнопку загрузки фото
-            avatar.innerHTML = "👥"; // Заглушка на долю секунды
+            groupControls.style.display = 'block';
             avatar.style.borderRadius = "35%";
             
             try {
-                // Запрашиваем актуальный список групп с сервера
-                const res = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
-                const groups = await res.json();
+                let groups;
+                // 1. ПРОВЕРЯЕМ КЭШ ГРУПП
+                if (APP_CACHE.groups.has(myUsername) && (Date.now() - APP_CACHE.groups.get(myUsername).timestamp < APP_CACHE.PROFILE_TTL)) {
+                    groups = APP_CACHE.groups.get(myUsername).data;
+                } else {
+                    // 2. ЕСЛИ В КЭШЕ НЕТ - ПОКАЗЫВАЕМ ЗАГРУЗКУ И ИДЕМ В СЕТЬ
+                    nameEl.textContent = "Загрузка...";
+                    avatar.innerHTML = "👥";
+                    
+                    const res = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
+                    groups = await res.json();
+                    APP_CACHE.groups.set(myUsername, { data: groups, timestamp: Date.now() }); // Сохраняем в кэш!
+                }
+                
                 const activeGroup = groups.find(g => g.id === currentChatUser);
                 
                 if (activeGroup) {
@@ -328,9 +337,10 @@
                     statusEl.textContent = "Группа";
                     membersCount.textContent = activeGroup.members.length;
                     
-                    // Подгружаем реальную аватарку группы!
                     if (activeGroup.avatar) {
                         avatar.innerHTML = `<img src="${activeGroup.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
+                    } else {
+                        avatar.innerHTML = "👥";
                     }
                     
                     membersSection.style.display = 'flex';
@@ -355,23 +365,22 @@
             }
         } else {
             // --- ЭТО ЛИЧНЫЙ ЧАТ ---
-            groupControls.style.display = 'none'; // Прячем кнопку загрузки фото
+            groupControls.style.display = 'none';
             membersSection.style.display = 'none';
             avatar.style.borderRadius = "50%";
-            nameEl.textContent = currentChatUser;
             statusEl.textContent = "онлайн";
-            avatar.innerHTML = currentChatUser.charAt(0).toUpperCase(); // Заглушка
             
-            // Подгружаем профиль собеседника!
-            // --- КЭШИРОВАННАЯ ЗАГРУЗКА ПРОФИЛЯ ---
             try {
                 let userData;
+                // 1. ПРОВЕРЯЕМ КЭШ ПРОФИЛЕЙ
                 if (APP_CACHE.profiles.has(currentChatUser)) {
-                    // Берем из памяти моментально!
                     userData = APP_CACHE.profiles.get(currentChatUser).data;
                     APP_CACHE.profiles.get(currentChatUser).timestamp = Date.now();
                 } else {
-                    // Идем на сервер и сохраняем в кэш
+                    // 2. ЕСЛИ В КЭШЕ НЕТ - ПОКАЗЫВАЕМ ЗАГРУЗКУ И ИДЕМ В СЕТЬ
+                    nameEl.textContent = "Загрузка...";
+                    avatar.innerHTML = currentChatUser.charAt(0).toUpperCase();
+                    
                     const res = await fetch(`/api/users/${currentChatUser}?_t=` + Date.now());
                     userData = await res.json();
                     if (userData && !userData.error) {
@@ -390,7 +399,6 @@
             } catch (e) { console.error("Ошибка профиля собеседника", e); }
         }
     });
-
     // Закрытие окна по крестику
     document.getElementById('close-chat-info-btn').addEventListener('click', () => {
         chatInfoModal.style.display = 'none';
@@ -414,6 +422,7 @@
     // --- СИСТЕМА КЭШИРОВАНИЯ (ОПТИМИЗАЦИЯ ПАМЯТИ) ---
     const APP_CACHE = {
         profiles: new Map(), // Для профилей собеседников (аватарки/имена)
+        groups: new Map(),   // <--- НОВОЕ: Кэш для списков групп
         media: new Map(),    // Для расшифрованных файлов (фото, видео, аудио)
         PROFILE_TTL: 5 * 60 * 1000, // Профили храним 5 минут
         MEDIA_TTL: 10 * 60 * 1000   // Медиа файлы храним 10 минут
@@ -425,7 +434,10 @@
         
         // Чистим профили
         APP_CACHE.profiles.forEach((value, key) => {
-            if (now - value.timestamp > APP_CACHE.PROFILE_TTL) APP_CACHE.profiles.delete(key);
+            if (now - value.timestamp > APP_CACHE.PROFILE_TTL) {
+                APP_CACHE.profiles.delete(key);
+                APP_CACHE.groups.clear();
+            }
         });
 
         // Чистим тяжелые медиафайлы (ОЧЕНЬ ВАЖНО ОСВОБОЖДАТЬ ПАМЯТЬ БРАУЗЕРА)
