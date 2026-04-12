@@ -1167,6 +1167,7 @@
             // ТРЮК: Прячем тип сообщения прямо в secretBox, чтобы не менять БД!
             const payload = {
                 sender: myUsername,
+                // Если мы в группе, recipient должен быть null, а groupId заполнен
                 recipient: currentChatIsGroup ? null : currentChatUser,
                 groupId: currentChatIsGroup ? currentChatUser : null,
                 isGroup: currentChatIsGroup,
@@ -1330,7 +1331,6 @@
                         mimeType: safeMimeType
                     }
                 };
-
                 socket.emit('send_message', { text: JSON.stringify(payload) });
                 
                 const videoUrl = URL.createObjectURL(videoBlob);
@@ -1602,43 +1602,50 @@
         if (e.key === 'Enter') sendMessage();
     });
 
-    // --- 4. ПОЛУЧЕНИЕ СООБЩЕНИЯ ---
+    // --- 4. ПОЛУЧЕНИЕ СООБЩЕНИЯ И ГАЛОЧКИ ---
     socket.on('receive_message', async (data) => {
         try {
             const payload = JSON.parse(data.text);
-
-            // МАРШРУТИЗАЦИЯ: Проверяем, открыт ли у нас нужный чат
+            
+            // МАРШРУТИЗАЦИЯ
             if (payload.isGroup) {
-                // Для групп: проверяем, открыта ли именно ЭТА группа
-                if (payload.groupId !== currentChatUser) return;
+                if (payload.groupId !== currentChatUser) return; // Игнорируем, если открыт другой чат
             } else {
-                // Для личных чатов: проверяем, открыт ли чат с ЭТИМ отправителем
                 if (payload.sender !== currentChatUser) return;
             }
 
             const box = payload.secretBox;
             const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+            
             if (decryptedBuffer) {
+                const type = 'other-message';
+                
+                // Добавляем имя отправителя (Только для групп)
+                const senderPrefix = payload.isGroup ? `<b style="color: var(--primary-color); font-size: 13px;">${payload.sender}:</b><br>` : '';
+
                 if (!box.type || box.type === 'TEXT') {
                     const text = bufferToText(decryptedBuffer);
-                    displayMessage(text, 'other-message', new Date(), false);
+                    const displayText = payload.isGroup ? senderPrefix + text : text;
+                    displayMessage(displayText, type, new Date(), false);
                 } else if (box.type === 'AUDIO') {
-                    // АУДИО
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, 'other-message', new Date(), false, '', false, true, false);
+                    displayMessage(url, type, new Date(), false, '', false, true, false);
                 } else if (box.type === 'VIDEO_CIRCLE') {
-                    // КРУЖОЧКИ
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, 'other-message', new Date(), false, '', false, false, true);
+                    displayMessage(url, type, new Date(), false, '', false, false, true);
                 } else {
-                    // КАРТИНКИ И ФАЙЛЫ
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const fileUrl = URL.createObjectURL(blob);
-                    displayMessage(fileUrl, 'other-message', new Date(), box.type === 'IMAGE', box.fileName);
+                    displayMessage(fileUrl, type, new Date(), box.type === 'IMAGE', box.fileName);
                 }
-                socket.emit('mark_read', { sender: payload.sender, recipient: myUsername });
+                
+                // ХИТРЫЙ ТРЮК С ГАЛОЧКАМИ:
+                // Если это группа, мы говорим серверу, что сообщение прочитала "сама группа" (отправляем groupId).
+                // Это заставит телефон отправителя моментально зажечь двойные галочки именно в этом чате!
+                const readBy = payload.isGroup ? payload.groupId : myUsername;
+                socket.emit('mark_read', { sender: payload.sender, recipient: readBy });
             }
         } catch (e) { console.error("Ошибка пакета", e); }
     });
