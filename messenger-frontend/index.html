@@ -617,19 +617,18 @@
     }
 
 // --- 2. ФУНКЦИЯ: ЗАГРУЗКА АКТИВНЫХ ЧАТОВ И ГРУПП ---
+    // --- 2. ФУНКЦИЯ: ЗАГРУЗКА АКТИВНЫХ ЧАТОВ И ГРУПП ---
     async function loadActiveChats() {
         if (!myUsername) return; 
 
         try {
-            // 1. Загружаем личные чаты
-            // Добавляем ?_t=... с текущим временем, чтобы обмануть кэш браузера
+            // 1. Загружаем списки с сервера (с защитой от кэша)
             const usersRes = await fetch('/api/users?_t=' + Date.now());
             const allUsers = await usersRes.json();
             
             const activeRes = await fetch(`/api/users/${myUsername}/chats?_t=` + Date.now());
             const activeNames = await activeRes.json();
 
-            // То же самое для загрузки групп!
             const groupsRes = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
             const myGroups = await groupsRes.json();
             
@@ -641,22 +640,25 @@
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
                 
-                // Проверяем, не открыта ли сейчас эта группа
                 if (group.id !== currentChatUser) { 
                     chatItem.style.background = 'var(--input-bg)';
                     chatItem.style.color = 'var(--text-main)';
                 }
                 
-                // Делаем аватарку группы чуть квадратной (border-radius: 35%)
+                // Проверяем, есть ли у группы своя аватарка
+                const avatarHtml = group.avatar 
+                    ? `<img src="${group.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`
+                    : '👥';
+                
+                // Собираем HTML для группы (без многоточий)
                 chatItem.innerHTML = `
-                    <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px;">👥</div>
+                    <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden;">${avatarHtml}</div>
                     <div class="chat-info">
                         <div style="font-weight: 600; font-size: 15px;">${group.name}</div>
                         <div style="font-size: 13px; opacity: 0.9;">Группа (${group.members.length} уч.)</div>
                     </div>
                 `;
                 
-                // Пока ставим заглушку. Открытие мы напишем следующим шагом!
                 chatItem.addEventListener('click', () => openGroupChat(group));
                 sidebar.appendChild(chatItem);
             });
@@ -675,11 +677,22 @@
                     chatItem.style.background = 'var(--input-bg)';
                     chatItem.style.color = 'var(--text-main)';
                 }
+
+                // Определяем имя для отображения (приоритет у displayName)
+                const displayName = user.displayName || user.username;
+
+                // Собираем аватарку (фото или буква)
+                const userAvatarHtml = user.avatar 
+                    ? `<img src="${user.avatar}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`
+                    : displayName.charAt(0).toUpperCase();
                 
+                // Если есть фото, убираем синий градиент у кружочка, если нет - оставляем
+                const avatarBackground = !user.avatar ? 'background: var(--gradient-primary); color: white;' : '';
+
                 chatItem.innerHTML = `
-                    <div class="avatar" style="${user.username !== currentChatUser ? 'background: var(--gradient-primary); color: white;' : ''}">${user.username.charAt(0).toUpperCase()}</div>
+                    <div class="avatar" style="${avatarBackground} display: flex; align-items: center; justify-content: center; overflow: hidden;">${userAvatarHtml}</div>
                     <div class="chat-info">
-                        <div style="font-weight: 600; font-size: 15px;">${user.username}</div>
+                        <div style="font-weight: 600; font-size: 15px;">${displayName}</div>
                         <div style="font-size: 13px; opacity: 0.9;">Нажмите для чата</div>
                     </div>
                 `;
@@ -1246,28 +1259,47 @@
     deleteAvatarBtn.addEventListener('click', () => updatePreview(null, myUsername));
 
     // Сохранение профиля
-    document.getElementById('save-profile-btn').addEventListener('click', () => {
+    document.getElementById('save-profile-btn').addEventListener('click', async () => {
         const newName = displayNameInput.value.trim() || myUsername;
-        localStorage.setItem('displayName', newName);
-        
-        if (tempAvatarBase64) {
-            localStorage.setItem('userAvatar', tempAvatarBase64);
-        } else {
-            localStorage.removeItem('userAvatar');
-        }
+        const avatarData = tempAvatarBase64; // Наша переменная с Base64
 
-        // Обновляем UI в меню
-        document.querySelector('.drawer-user-info .name').textContent = newName;
-        const drawerAvatar = document.querySelector('.drawer-avatar');
-        if (tempAvatarBase64) {
-            drawerAvatar.innerHTML = `<img src="${tempAvatarBase64}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
-        } else {
-            drawerAvatar.innerHTML = newName.charAt(0).toUpperCase();
-        }
+        try {
+            const res = await fetch('/api/users/update', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: myUsername,
+                    displayName: newName,
+                    avatar: avatarData
+                })
+            });
+            const result = await res.json();
+            
+            if (result.success) {
+                // Только после успеха на сервере обновляем локальные данные
+                localStorage.setItem('displayName', newName);
+                if (avatarData) localStorage.setItem('userAvatar', avatarData);
+                else localStorage.removeItem('userAvatar');
 
-        profileModal.style.display = 'none';
-        alert("Профиль обновлен!");
+                // Обновляем UI
+                updateUIAvatar(newName, avatarData);
+                profileModal.style.display = 'none';
+                alert("Профиль сохранен на сервере!");
+            }
+        } catch (e) {
+            alert("Ошибка сохранения на сервере");
+        }
     });
+
+    function updateUIAvatar(name, avatar) {
+        document.querySelector('.drawer-user-info .name').textContent = name;
+        const drawerAvatar = document.querySelector('.drawer-avatar');
+        if (avatar) {
+            drawerAvatar.innerHTML = `<img src="${avatar}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+        } else {
+            drawerAvatar.innerHTML = name.charAt(0).toUpperCase();
+        }
+    }
 
     document.getElementById('cancel-profile-btn').addEventListener('click', () => profileModal.style.display = 'none');
 
@@ -1296,9 +1328,17 @@
             const reader = new FileReader();
             reader.onload = async (event) => {
                 const base64 = event.target.result;
-                // Здесь будет fetch запрос на сервер для обновления аватара группы в БД
-                document.getElementById('info-avatar').innerHTML = `<img src="${base64}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
-                alert("Аватар группы изменен (локально, скоро добавим сохранение в БД)");
+                
+                const res = await fetch(`/api/groups/${currentChatUser}/update-avatar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ avatar: base64 })
+                });
+
+                if (res.ok) {
+                    document.getElementById('info-avatar').innerHTML = `<img src="${base64}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
+                    loadActiveChats(); // Обновляем сайдбар
+                }
             };
             reader.readAsDataURL(file);
         }

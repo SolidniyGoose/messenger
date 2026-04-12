@@ -100,6 +100,34 @@ app.get('/api/users/:username/groups', async (req, res) => {
     }
 });
 
+// Обновление профиля пользователя
+app.post('/api/users/update', async (req, res) => {
+    const { username, displayName, avatar } = req.body;
+    try {
+        const updatedUser = await prisma.user.update({
+            where: { username },
+            data: { displayName, avatar }
+        });
+        res.json({ success: true, user: updatedUser });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
+// Обновление аватара группы
+app.post('/api/groups/:id/update-avatar', async (req, res) => {
+    const { avatar } = req.body;
+    try {
+        await prisma.group.update({
+            where: { id: req.params.id },
+            data: { avatar }
+        });
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false });
+    }
+});
+
 // Инициализация Socket.IO с увеличенным лимитом для файлов
 const io = new Server(server, {
     cors: {
