@@ -653,6 +653,7 @@
             // СКАЗАТЬ СЕРВЕРУ, ЧТО МЫ ВСЁ ПРОЧИТАЛИ:
             socket.emit('mark_read', { sender: user.username, recipient: myUsername });
         }
+        updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮДА
     }
 
     // --- 1.2 ФУНКЦИЯ: ОТКРЫТЬ ГРУППОВОЙ ЧАТ ---
@@ -773,6 +774,7 @@
             console.error("Ошибка при расшифровке ключа группы:", error);
             alert("Ошибка входа в группу: " + error.message);
         }
+        updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮДА
     }
 
 const groupSettingsBtn = document.getElementById('group-settings-btn');
@@ -1404,7 +1406,18 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         currentGalleryImages = urlsString.split(','); 
         currentGalleryIndex = startIndex;
         updateGalleryUI();
-        imageViewer.classList.add('show'); // Используем класс из CSS
+        
+        imageViewer.style.display = 'flex'; // 1. Принудительно делаем блок видимым
+        setTimeout(() => imageViewer.classList.add('show'), 10); // 2. Плавно проявляем
+    };
+
+    // Закрытие галереи
+    const closeGallery = () => { 
+        imageViewer.classList.remove('show'); // 1. Плавно гасим прозрачность
+        setTimeout(() => { 
+            imageViewer.style.display = 'none'; // 2. Принудительно прячем блок
+            imageViewerImg.src = ''; 
+        }, 300); // Ждем окончания анимации
     };
 
     viewerPrevBtn.addEventListener('click', (e) => {
@@ -1419,11 +1432,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         updateGalleryUI();
     });
 
-    // Закрытие галереи
-    const closeGallery = () => { 
-        imageViewer.classList.remove('show'); // Убираем класс
-        setTimeout(() => { imageViewerImg.src = ''; }, 300); // Очищаем после анимации
-    };
+    
     document.getElementById('viewer-close-btn').addEventListener('click', closeGallery);
     imageViewer.addEventListener('click', (e) => { if (e.target === imageViewer || e.target.classList.contains('viewer-img-container')) closeGallery(); });
 
