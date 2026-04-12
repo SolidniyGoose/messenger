@@ -1143,7 +1143,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         await loadActiveChats();
         
         // Магия: Автоматически обновляем контакты каждые 5 секунд!
-        setInterval(loadActiveChats, 5000); 
+        setInterval(loadActiveChats, 60000); 
     }
 
     // Запускаем процесс при открытии страницы
@@ -1233,7 +1233,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }
 
         await loadActiveChats();
-        setInterval(loadActiveChats, 5000); // Автообновление контактов
+        setInterval(loadActiveChats, 60000); // Автообновление контактов
         return true;
     }
 
@@ -1281,7 +1281,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 // ---------------------------------------------------------
                 
                 loadActiveChats();
-                setInterval(loadActiveChats, 5000);
+                setInterval(loadActiveChats, 60000);
             });
     }
 
@@ -2426,6 +2426,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 // Это заставит телефон отправителя моментально зажечь двойные галочки именно в этом чате!
                 const readBy = payload.isGroup ? payload.groupId : myUsername;
                 socket.emit('mark_read', { sender: payload.sender, recipient: readBy });
+                // --- НОВОЕ: ОБНОВЛЯЕМ САЙДБАР ПРИ НОВОМ СООБЩЕНИИ ---
+                // Если нам написал кто-то новый, он мгновенно появится слева!
+                loadActiveChats();
             }
         } catch (e) { console.error("Ошибка пакета", e); }
     });
