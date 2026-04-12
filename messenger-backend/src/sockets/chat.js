@@ -34,8 +34,7 @@ module.exports = (io) => {
 
                 if (payload.isGroup) {
                     // === ЛОГИКА ДЛЯ ГРУПП ===
-                    
-                    // 1. Сохраняем сообщение в БД с привязкой к ID группы
+                    // 1. Сохраняем в БД с привязкой к groupId
                     await prisma.message.create({
                         data: {
                             sender: payload.sender,
@@ -44,7 +43,7 @@ module.exports = (io) => {
                         }
                     });
 
-                    // 2. Ищем всех участников этой группы
+                    // 2. Ищем всех участников группы
                     const group = await prisma.group.findUnique({
                         where: { id: payload.groupId },
                         include: { members: true }
@@ -56,7 +55,6 @@ module.exports = (io) => {
                             if (member.username !== payload.sender) {
                                 const memberSocketId = onlineUsers.get(member.username);
                                 if (memberSocketId) {
-                                    // Отправляем пакет участнику
                                     io.to(memberSocketId).emit('receive_message', { text: JSON.stringify(payload) });
                                 }
                             }

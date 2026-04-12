@@ -1165,9 +1165,9 @@
             const encryptedData = await encryptMessage(dataBuffer, currentSharedKey);
 
             // ТРЮК: Прячем тип сообщения прямо в secretBox, чтобы не менять БД!
+            // ВАЖНО: Браузер должен правильно запаковать группу!
             const payload = {
                 sender: myUsername,
-                // Если мы в группе, recipient должен быть null, а groupId заполнен
                 recipient: currentChatIsGroup ? null : currentChatUser,
                 groupId: currentChatIsGroup ? currentChatUser : null,
                 isGroup: currentChatIsGroup,
