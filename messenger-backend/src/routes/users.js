@@ -36,16 +36,15 @@ router.get('/:username', async (req, res) => {
     }
 });
 
-// 3. СПИСОК КОНТАКТОВ (Без раздачи чужих приватных ключей!)
+// 3. СПИСОК КОНТАКТОВ (Облегченный для бокового меню)
 router.get('/', async (req, res) => {
     try {
         const users = await prisma.user.findMany({
             select: { 
-                // УБРАЛИ id: true, так как его не существует
                 username: true, 
                 publicKey: true,
-                displayName: true, // НОВОЕ: Отдаем имя
-                avatar: true       // НОВОЕ: Отдаем аватарку
+                displayName: true
+                // УБРАЛИ avatar: true (Теперь этот JSON будет весить 5 КБ вместо 250 КБ!)
             } 
         });
         res.json(users);

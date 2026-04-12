@@ -79,25 +79,35 @@ app.post('/api/groups/create', async (req, res) => {
     }
 });
 
-// --- ЭНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ГРУПП ПОЛЬЗОВАТЕЛЯ ---
+// --- ЭНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ГРУПП (ОБЛЕГЧЕННЫЙ - ТОЛЬКО ДЛЯ САЙДБАРА) ---
 app.get('/api/users/:username/groups', async (req, res) => {
     try {
         const username = req.params.username;
         const groups = await prisma.group.findMany({
             where: {
-                members: {
-                    some: { username: username } // Ищем группы, где есть этот юзер
-                }
+                members: { some: { username: username } }
             },
-            include: {
-                members: true // Включаем участников, чтобы знать их количество
+            select: {
+                id: true,
+                name: true,
+                // avatar - НЕ запрашиваем
+                // members - НЕ запрашиваем (чтобы не тянуть тяжелые ключи)
+                _count: { select: { members: true } } // Магия Prisma: просим только КОЛИЧЕСТВО участников
             }
         });
         res.json(groups);
-    } catch (error) {
-        console.error("Ошибка при получении групп:", error);
-        res.status(500).json({ error: "Ошибка сервера" });
-    }
+    } catch (error) { res.status(500).json({ error: "Ошибка сервера" }); }
+});
+
+// --- НОВЫЙ ЭНДПОИНТ: ПОЛУЧЕНИЕ 100% ИНФОРМАЦИИ О КОНКРЕТНОЙ ГРУППЕ ---
+app.get('/api/groups/:id', async (req, res) => {
+    try {
+        const group = await prisma.group.findUnique({
+            where: { id: req.params.id },
+            include: { members: true } // Здесь забираем всё (и аватар, и ключи участников)
+        });
+        res.json(group);
+    } catch (error) { res.status(500).json({ error: "Ошибка" }); }
 });
 
 // Обновление профиля пользователя

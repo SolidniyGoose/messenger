@@ -377,7 +377,8 @@
                     APP_CACHE.groups.set(myUsername, { data: groups, timestamp: Date.now() }); // Сохраняем в кэш!
                 }
                 
-                const activeGroup = groups.find(g => g.id === currentChatUser);
+                const res = await fetch(`/api/groups/${currentChatUser}?_t=` + Date.now());
+                const activeGroup = await res.json();
                 
                 if (activeGroup) {
                     nameEl.textContent = activeGroup.name;
@@ -676,8 +677,12 @@
         updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮД
 
         try {
-            // 1. Ищем НАШ личный сейф
-            const myMemberRecord = group.members.find(m => m.username === myUsername);
+            // --- НОВОЕ: Скачиваем полные данные группы вместе с ключами ---
+            const fullGroupRes = await fetch(`/api/groups/${group.id}`);
+            const fullGroup = await fullGroupRes.json();
+
+            // 1. Ищем НАШ личный сейф (Используем fullGroup вместо group)
+            const myMemberRecord = fullGroup.members.find(m => m.username === myUsername);
             const encryptedKeyBox = JSON.parse(myMemberRecord.encryptedKeyBox);
 
             // 2. Читаем "подпись": кто именно зашифровал для нас этот ключ?
@@ -858,7 +863,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden;">${avatarHtml}</div>
                     <div class="chat-info">
                         <div style="font-weight: 600; font-size: 15px;">${group.name}</div>
-                        <div style="font-size: 13px; opacity: 0.9;">Группа (${group.members.length} уч.)</div>
+                        <div style="font-size: 13px; opacity: 0.9;">Группа (${group._count.members} уч.)</div>
                     </div>
                 `;
                 
