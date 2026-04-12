@@ -364,6 +364,7 @@
     }
 
     // --- 1.2 ФУНКЦИЯ: ОТКРЫТЬ ГРУППОВОЙ ЧАТ ---
+    // --- 1.2 ФУНКЦИЯ: ОТКРЫТЬ ГРУППОВОЙ ЧАТ ---
     async function openGroupChat(group) {
         document.getElementById('contacts-modal').style.display = 'none';
         document.getElementById('drawer').classList.remove('open');
@@ -373,22 +374,47 @@
         document.querySelector('.chat-name').textContent = group.name;
         document.querySelector('.chat-status').textContent = `Участников: ${group.members.length}`;
         
-        currentChatUser = group.id; // ID группы становится нашим получателем
-        currentChatIsGroup = true;  // Включаем режим группы
+        currentChatUser = group.id; 
+        currentChatIsGroup = true;  
         loadActiveChats(); 
 
         try {
-            // 1. Ищем НАШ личный сейф среди всех участников
+            // 1. Ищем НАШ личный сейф
             const myMemberRecord = group.members.find(m => m.username === myUsername);
             const encryptedKeyBox = JSON.parse(myMemberRecord.encryptedKeyBox);
 
-            // 2. Создаем мост к самому себе, чтобы открыть сейф
-            const mySharedKey = await deriveSharedSecret(myPublicKeyBase64);
+            // 2. Читаем "подпись": кто именно зашифровал для нас этот ключ?
+            const creatorUsername = encryptedKeyBox.encryptedBy;
+            
+            if (!creatorUsername) {
+                // Если мы пытаемся открыть группу, созданную ДО этого исправления
+                throw new Error("Эта группа имеет старый формат. Пожалуйста, создайте новую группу для тестов!");
+            }
 
-            // 3. Расшифровываем сырой ключ группы
-            const rawGroupKeyBuffer = await decryptMessage(encryptedKeyBox, mySharedKey);
+            // 3. Достаем публичный ключ создателя
+            let creatorPublicKeyBase64;
+            if (creatorUsername === myUsername) {
+                creatorPublicKeyBase64 = myPublicKeyBase64; // Если мы сами создали
+            } else {
+                // Идем на сервер за ключом создателя
+                const usersRes = await fetch('/api/users');
+                const allUsers = await usersRes.json();
+                const creatorObj = allUsers.find(u => u.username === creatorUsername);
+                if (!creatorObj) throw new Error("Создатель группы не найден!");
+                creatorPublicKeyBase64 = creatorObj.publicKey;
+            }
 
-            // 4. Импортируем его как полноценный AES-GCM ключ для чата!
+            // 4. Создаем "мост" именно с СОЗДАТЕЛЕМ, а не с самим собой!
+            const creatorSharedKey = await deriveSharedSecret(creatorPublicKeyBase64);
+
+            // 5. Расшифровываем сырой ключ группы
+            const rawGroupKeyBuffer = await decryptMessage(encryptedKeyBox, creatorSharedKey);
+            
+            if (!rawGroupKeyBuffer) {
+                throw new Error("Сейф не открылся. Ключи не совпадают.");
+            }
+
+            // 6. Импортируем ключ для чата
             currentSharedKey = await window.crypto.subtle.importKey(
                 "raw",
                 rawGroupKeyBuffer,
@@ -397,9 +423,9 @@
                 ["encrypt", "decrypt"]
             );
 
-            console.log("🔓 Ключ группы успешно расшифрован и активирован!");
+            console.log("🔓 Ключ группы успешно расшифрован!");
             
-            // Временно выводим заглушку. Загрузку истории мы сделаем на следующем шаге!
+            // Заглушка (вместо неё мы скоро загрузим реальную историю сообщений!)
             document.getElementById('messages-list').innerHTML = `
                 <div style="text-align:center; padding: 20px; color: var(--text-muted);">
                     Вы успешно расшифровали ключ группы!<br>Отправка сообщений в разработке...
@@ -408,7 +434,7 @@
 
         } catch (error) {
             console.error("Ошибка при расшифровке ключа группы:", error);
-            alert("Не удалось расшифровать ключ группы!");
+            alert("Ошибка входа в группу: " + error.message);
         }
     }
 
@@ -602,10 +628,14 @@
             const rawGroupKey = await window.crypto.subtle.exportKey("raw", groupKey);
             const groupMembersData = [];
 
+            // 2. РАЗДАЕМ КЛЮЧ
             for (const username of selectedForGroup) {
                 const userObj = allAvailableContacts.find(u => u.username === username);
                 const sharedKeyForUser = await deriveSharedSecret(userObj.publicKey);
+                
                 const encryptedGroupKeyBox = await encryptMessage(rawGroupKey, sharedKeyForUser);
+                // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Оставляем "подпись", кто зашифровал ключ!
+                encryptedGroupKeyBox.encryptedBy = myUsername; 
                 
                 groupMembersData.push({
                     username: username,
@@ -613,8 +643,12 @@
                 });
             }
 
+            // 3. Шифруем для себя
             const mySharedKey = await deriveSharedSecret(myPublicKeyBase64); 
             const myEncryptedGroupKeyBox = await encryptMessage(rawGroupKey, mySharedKey);
+            
+            // И для себя тоже оставляем подпись
+            myEncryptedGroupKeyBox.encryptedBy = myUsername; 
             
             groupMembersData.push({
                 username: myUsername,
@@ -634,7 +668,7 @@
             const data = await response.json();
             
             if (data.success) {
-                alert(`Группа "${groupName}" успешно создана!`);
+                // alert(`Группа "${groupName}" успешно создана!`);
                 document.getElementById('contacts-modal').style.display = 'none';
                 
                 // Сбрасываем форму
