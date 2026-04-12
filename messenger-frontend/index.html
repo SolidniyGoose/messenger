@@ -73,7 +73,7 @@
     </ul>
 </div>
 
-<div class="sidebar" style="position: relative; display: flex; flex-direction: column;">
+<div class="sidebar" style="position: relative;">
     <div class="sidebar-header">
         <button class="menu-btn" aria-label="Меню">☰</button>
         <input type="text" class="search-bar" placeholder="Поиск...">
@@ -234,7 +234,8 @@
     let myUsername = null; 
     let currentSharedKey = null; // <--- Для общего секрета
     let currentChatUser = null;  // <--- Имя текущего собеседника
-
+    let currentChatIsGroup = false;
+    
     // --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Из Base64 обратно в байты ---
     function base64ToArrayBuffer(base64) {
         const binaryString = window.atob(base64);
@@ -315,6 +316,7 @@
 
         document.querySelector('.chat-name').textContent = user.username;
         currentChatUser = user.username;
+        currentChatIsGroup = false; // Обычный чат, не группа
         loadActiveChats(); 
         
         currentSharedKey = await deriveSharedSecret(user.publicKey);
@@ -361,6 +363,55 @@
         }
     }
 
+    // --- 1.2 ФУНКЦИЯ: ОТКРЫТЬ ГРУППОВОЙ ЧАТ ---
+    async function openGroupChat(group) {
+        document.getElementById('contacts-modal').style.display = 'none';
+        document.getElementById('drawer').classList.remove('open');
+        document.getElementById('backdrop').classList.remove('show');
+        if (window.innerWidth <= 768) document.body.classList.add('mobile-chat-active');
+
+        document.querySelector('.chat-name').textContent = group.name;
+        document.querySelector('.chat-status').textContent = `Участников: ${group.members.length}`;
+        
+        currentChatUser = group.id; // ID группы становится нашим получателем
+        currentChatIsGroup = true;  // Включаем режим группы
+        loadActiveChats(); 
+
+        try {
+            // 1. Ищем НАШ личный сейф среди всех участников
+            const myMemberRecord = group.members.find(m => m.username === myUsername);
+            const encryptedKeyBox = JSON.parse(myMemberRecord.encryptedKeyBox);
+
+            // 2. Создаем мост к самому себе, чтобы открыть сейф
+            const mySharedKey = await deriveSharedSecret(myPublicKeyBase64);
+
+            // 3. Расшифровываем сырой ключ группы
+            const rawGroupKeyBuffer = await decryptMessage(encryptedKeyBox, mySharedKey);
+
+            // 4. Импортируем его как полноценный AES-GCM ключ для чата!
+            currentSharedKey = await window.crypto.subtle.importKey(
+                "raw",
+                rawGroupKeyBuffer,
+                { name: "AES-GCM", length: 256 },
+                true,
+                ["encrypt", "decrypt"]
+            );
+
+            console.log("🔓 Ключ группы успешно расшифрован и активирован!");
+            
+            // Временно выводим заглушку. Загрузку истории мы сделаем на следующем шаге!
+            document.getElementById('messages-list').innerHTML = `
+                <div style="text-align:center; padding: 20px; color: var(--text-muted);">
+                    Вы успешно расшифровали ключ группы!<br>Отправка сообщений в разработке...
+                </div>
+            `;
+
+        } catch (error) {
+            console.error("Ошибка при расшифровке ключа группы:", error);
+            alert("Не удалось расшифровать ключ группы!");
+        }
+    }
+
 // --- 2. ФУНКЦИЯ: ЗАГРУЗКА АКТИВНЫХ ЧАТОВ И ГРУПП ---
     async function loadActiveChats() {
         if (!myUsername) return; 
@@ -401,7 +452,7 @@
                 `;
                 
                 // Пока ставим заглушку. Открытие мы напишем следующим шагом!
-                chatItem.addEventListener('click', () => alert("Открытие группы мы сделаем на следующем шаге!"));
+                chatItem.addEventListener('click', () => openGroupChat(group));
                 sidebar.appendChild(chatItem);
             });
 
