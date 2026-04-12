@@ -687,7 +687,8 @@
         if (window.innerWidth <= 768) document.body.classList.add('mobile-chat-active');
 
         document.querySelector('.chat-name').textContent = group.name;
-        document.querySelector('.chat-status').textContent = `Участников: ${group.members.length}`;
+        // Берем число из нашей новой переменной _count
+        document.querySelector('.chat-status').textContent = `Участников: ${group._count.members}`;
         
         currentChatUser = group.id; 
         currentChatIsGroup = true;  
