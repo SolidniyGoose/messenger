@@ -37,15 +37,20 @@
     </div>
 <div id="contacts-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
     <div style="background: var(--bg-sidebar); width: 90%; max-width: 400px; border-radius: 20px; padding: 20px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
+        
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <h3 style="margin: 0; color: var(--text-main);">Контакты</h3>
+            <h3 id="modal-title" style="margin: 0; color: var(--text-main);">Контакты</h3>
             <button id="close-contacts-btn" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</button>
         </div>
+
+        <input type="text" id="group-name-input" placeholder="Название группы..." style="display: none; padding: 12px; margin-bottom: 15px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); color: var(--text-main); outline: none;">
+
         <div id="contacts-list" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
             </div>
+
+        <button id="confirm-group-btn" style="display: none; margin-top: 15px; padding: 12px; background: var(--gradient-primary); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: bold;">Создать группу</button>
     </div>
 </div>
-
 <div class="backdrop" id="backdrop"></div>
 
 <div class="drawer" id="drawer">
@@ -73,6 +78,10 @@
         <button class="menu-btn" aria-label="Меню">☰</button>
         <input type="text" class="search-bar" placeholder="Поиск...">
     </div>
+    
+    <button id="sidebar-group-btn" title="Создать группу">
+        <span>+</span>
+    </button>
 </div>
 
 <div class="chat-area">
@@ -401,37 +410,153 @@
         }
     }
 
-    // --- 3. ЛОГИКА ОКНА КОНТАКТОВ ---
+    // --- 3. ЛОГИКА ОКНА КОНТАКТОВ И ГРУПП ---
+    let isCreatingGroup = false;
+    let selectedForGroup = new Set();
+    let allAvailableContacts = [];
+
+    const modalTitle = document.getElementById('modal-title');
+    const groupNameInput = document.getElementById('group-name-input');
+    const confirmGroupBtn = document.getElementById('confirm-group-btn');
+    const contactsList = document.getElementById('contacts-list');
+    const sidebarGroupBtn = document.getElementById('sidebar-group-btn'); // Новая кнопка
+
+    // Функция отрисовки списка контактов
+    function renderContactsList(users) {
+        contactsList.innerHTML = '';
+        users.forEach(user => {
+            if (user.username === myUsername) return; 
+            
+            const item = document.createElement('div');
+            item.style.cssText = "display: flex; align-items: center; justify-content: space-between; padding: 12px; cursor: pointer; border-radius: 12px; background: var(--input-bg); transition: 0.2s;";
+            
+            let checkboxHtml = '';
+            if (isCreatingGroup) {
+                const isSelected = selectedForGroup.has(user.username);
+                checkboxHtml = `<div style="width: 20px; height: 20px; border-radius: 5px; border: 2px solid ${isSelected ? 'var(--primary-color)' : 'var(--text-muted)'}; background: ${isSelected ? 'var(--primary-color)' : 'transparent'}; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px;">${isSelected ? '✓' : ''}</div>`;
+            }
+
+            item.innerHTML = `
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${user.username.charAt(0).toUpperCase()}</div>
+                    <div style="font-weight: 600; color: var(--text-main); font-size: 16px;">${user.username}</div>
+                </div>
+                ${checkboxHtml}
+            `;
+
+            item.addEventListener('click', () => {
+                if (isCreatingGroup) {
+                    if (selectedForGroup.has(user.username)) {
+                        selectedForGroup.delete(user.username);
+                    } else {
+                        selectedForGroup.add(user.username);
+                    }
+                    renderContactsList(allAvailableContacts); 
+                } else {
+                    openChatWith(user);
+                }
+            });
+            contactsList.appendChild(item);
+        });
+    }
+
+    // Открытие ОБЫЧНЫХ контактов из меню
     document.getElementById('contacts-btn').addEventListener('click', async () => {
         document.getElementById('drawer').classList.remove('open');
         document.getElementById('backdrop').classList.remove('show');
         document.getElementById('contacts-modal').style.display = 'flex';
         
+        isCreatingGroup = false;
+        selectedForGroup.clear();
+        modalTitle.textContent = 'Контакты';
+        groupNameInput.style.display = 'none';
+        confirmGroupBtn.style.display = 'none';
+
         try {
             const res = await fetch('/api/users');
-            const users = await res.json();
-            const list = document.getElementById('contacts-list');
-            list.innerHTML = '';
-            
-            users.forEach(user => {
-                if (user.username === myUsername) return; 
-                
-                const item = document.createElement('div');
-                item.style.cssText = "display: flex; align-items: center; gap: 15px; padding: 12px; cursor: pointer; border-radius: 12px; background: var(--input-bg); transition: 0.2s;";
-                item.innerHTML = `
-                    <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${user.username.charAt(0).toUpperCase()}</div>
-                    <div style="font-weight: 600; color: var(--text-main); font-size: 16px;">${user.username}</div>
-                `;
-                item.addEventListener('click', () => openChatWith(user));
-                list.appendChild(item);
-            });
+            allAvailableContacts = await res.json();
+            renderContactsList(allAvailableContacts);
         } catch (e) {
-            console.error("Ошибка загрузки контактов:", e);
+            console.error("Ошибка загрузки:", e);
+        }
+    });
+
+    // --- ЛОГИКА НОВОЙ КНОПКИ В САЙДБАРЕ: Создание группы ---
+    sidebarGroupBtn.addEventListener('click', async () => {
+        document.getElementById('contacts-modal').style.display = 'flex';
+        
+        isCreatingGroup = true;
+        selectedForGroup.clear();
+        modalTitle.textContent = 'Выберите участников';
+        
+        groupNameInput.style.display = 'block';
+        groupNameInput.value = ''; // Очищаем поле
+        confirmGroupBtn.style.display = 'block';
+        
+        try {
+            const res = await fetch('/api/users');
+            allAvailableContacts = await res.json();
+            renderContactsList(allAvailableContacts);
+        } catch (e) {
+            console.error("Ошибка загрузки:", e);
         }
     });
 
     document.getElementById('close-contacts-btn').addEventListener('click', () => {
         document.getElementById('contacts-modal').style.display = 'none';
+        isCreatingGroup = false; // Сбрасываем флаг при закрытии
+    });
+
+    // --- МАГИЯ: ПОДТВЕРЖДЕНИЕ СОЗДАНИЯ ГРУППЫ ---
+    confirmGroupBtn.addEventListener('click', async () => {
+        const groupName = groupNameInput.value.trim();
+        if (!groupName) return alert("Введите название группы!");
+        if (selectedForGroup.size === 0) return alert("Выберите хотя бы одного участника!");
+
+        confirmGroupBtn.textContent = "Шифруем ключи...";
+        confirmGroupBtn.style.opacity = '0.7';
+
+        try {
+            const groupKey = await window.crypto.subtle.generateKey(
+                { name: "AES-GCM", length: 256 },
+                true, 
+                ["encrypt", "decrypt"]
+            );
+            
+            const rawGroupKey = await window.crypto.subtle.exportKey("raw", groupKey);
+            const groupMembersData = [];
+
+            for (const username of selectedForGroup) {
+                const userObj = allAvailableContacts.find(u => u.username === username);
+                const sharedKeyForUser = await deriveSharedSecret(userObj.publicKey);
+                const encryptedGroupKeyBox = await encryptMessage(rawGroupKey, sharedKeyForUser);
+                
+                groupMembersData.push({
+                    username: username,
+                    encryptedKeyBox: JSON.stringify(encryptedGroupKeyBox)
+                });
+            }
+
+            const mySharedKey = await deriveSharedSecret(myPublicKeyBase64); 
+            const myEncryptedGroupKeyBox = await encryptMessage(rawGroupKey, mySharedKey);
+            
+            groupMembersData.push({
+                username: myUsername,
+                encryptedKeyBox: JSON.stringify(myEncryptedGroupKeyBox)
+            });
+
+            console.log("Группа готова к отправке на сервер!", { groupName, groupMembersData });
+            alert("Ключи сгенерированы! Откройте консоль (F12) чтобы увидеть пакет.");
+            
+            document.getElementById('contacts-modal').style.display = 'none';
+
+        } catch (error) {
+            console.error("Ошибка при создании группы:", error);
+            alert("Произошла ошибка при генерации ключей.");
+        } finally {
+            confirmGroupBtn.textContent = "Создать группу";
+            confirmGroupBtn.style.opacity = '1';
+        }
     });
 
     // 2. Функция для создания пары ключей (ТЕПЕРЬ С ПАМЯТЬЮ!)
@@ -1310,7 +1435,6 @@
 
             const box = payload.secretBox;
             const decryptedBuffer = await decryptMessage(box, currentSharedKey);
-            
             if (decryptedBuffer) {
                 if (!box.type || box.type === 'TEXT') {
                     const text = bufferToText(decryptedBuffer);

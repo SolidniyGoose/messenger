@@ -578,3 +578,37 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     z-index: 10 !important; /* Выводим поверх остальных сообщений */
     box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important; /* Делаем тень глубже */
 }
+
+/* --- ПЛАВАЮЩАЯ КНОПКА В САЙДБАРЕ --- */
+.sidebar {
+    position: relative; /* Чтобы кнопка позиционировалась относительно сайдбара */
+}
+
+#sidebar-group-btn {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background: var(--gradient-primary);
+    color: white;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 100; /* Чтобы была выше списка чатов */
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+#sidebar-group-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+}
+
+#sidebar-group-btn:active {
+    transform: scale(0.95);
+}
