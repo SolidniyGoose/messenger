@@ -612,3 +612,48 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 #sidebar-group-btn:active {
     transform: scale(0.95);
 }
+/* --- ПЛАВАЮЩАЯ КНОПКА СОЗДАНИЯ ГРУППЫ В САЙДБАРЕ --- */
+
+/* Делаем сайдбар относительным, чтобы кнопка не улетала за его пределы */
+.sidebar {
+    position: relative; 
+}
+
+#sidebar-group-btn {
+    position: absolute; /* Вырываем кнопку из общего списка чатов */
+    bottom: 20px;       /* Прижимаем к низу */
+    right: 20px;        /* Прижимаем к правому краю */
+    
+    width: 56px;
+    height: 56px;
+    border-radius: 50%; /* Делаем идеальный круг */
+    
+    background: var(--gradient-primary);
+    color: white;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 100; /* Поднимаем над списком чатов */
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    
+    /* Сбрасываем возможные стандартные отступы браузера */
+    padding: 0;
+    margin: 0;
+}
+
+/* Эффект при наведении */
+#sidebar-group-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.4);
+}
+
+/* Эффект при клике */
+#sidebar-group-btn:active {
+    transform: scale(0.95);
+}

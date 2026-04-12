@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Таблица пользователей
+model User {
+  id        String   @id @default(uuid())
+  username  String   @unique
+  publicKey String?
+  encryptedPrivKey String?  
+  createdAt DateTime @default(now())
+}
+
+// Таблица зашифрованных сообщений
+model Message {
+  id          String   @id @default(uuid())
+  sender      String   
+  recipient   String
+groupId   String?  // НОВОЕ: ID группы (если это групповое сообщение)   
+  secretBox   Json     
+  isRead      Boolean  @default(false) // <--- НОВОЕ ПОЛЕ
+  createdAt   DateTime @default(now())
+}
+// --- НОВЫЕ ТАБЛИЦЫ ДЛЯ ГРУПП ---
+
+model Group {
+  id        String   @id @default(uuid())
+  name      String   // Название группы
+  createdAt DateTime @default(now())
+
+  // Связь: кто состоит в группе
+  members   GroupMember[]
+}
+
+model GroupMember {
+  id              String  @id @default(uuid())
+  groupId         String
+  username        String  // Имя пользователя
+  
+  // В этом поле будет лежать зашифрованный "Ключ Группы" специально для этого пользователя!
+  encryptedKeyBox String? 
+
+  group           Group   @relation(fields: [groupId], references: [id])
+}

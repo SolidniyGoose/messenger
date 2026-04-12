@@ -73,17 +73,16 @@
     </ul>
 </div>
 
-<div class="sidebar">
+<div class="sidebar" style="position: relative; display: flex; flex-direction: column;">
     <div class="sidebar-header">
         <button class="menu-btn" aria-label="Меню">☰</button>
         <input type="text" class="search-bar" placeholder="Поиск...">
     </div>
     
-    <button id="sidebar-group-btn" title="Создать группу">
-        <span>+</span>
+    <button id="sidebar-group-btn" title="Создать группу" style="position: absolute; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: var(--gradient-primary); color: white; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; padding: 0; margin: 0; transition: transform 0.2s;">
+        <span style="margin-top: -2px;">+</span>
     </button>
 </div>
-
 <div class="chat-area">
     <div class="chat-header">
         <button class="back-btn" id="back-btn" aria-label="Назад">←</button>
@@ -362,23 +361,51 @@
         }
     }
 
-    // --- 2. ФУНКЦИЯ: ЗАГРУЗКА ТОЛЬКО АКТИВНЫХ ЧАТОВ ---
+// --- 2. ФУНКЦИЯ: ЗАГРУЗКА АКТИВНЫХ ЧАТОВ И ГРУПП ---
     async function loadActiveChats() {
         if (!myUsername) return; 
 
         try {
+            // 1. Загружаем личные чаты
             const usersRes = await fetch('/api/users');
             const allUsers = await usersRes.json();
             
-            // Спрашиваем у сервера, с кем у нас есть переписка
             const activeRes = await fetch(`/api/users/${myUsername}/chats`);
             const activeNames = await activeRes.json();
+
+            // 2. НОВОЕ: Загружаем группы пользователя
+            const groupsRes = await fetch(`/api/users/${myUsername}/groups`);
+            const myGroups = await groupsRes.json();
             
             const sidebar = document.querySelector('.sidebar');
-            document.querySelectorAll('.sidebar .chat-mock').forEach(el => el.remove()); // Очищаем список
+            document.querySelectorAll('.sidebar .chat-mock').forEach(el => el.remove()); 
             
-            // МАГИЯ ИСЧЕЗНОВЕНИЯ: показываем только тех, кто есть в истории БД, 
-            // ИЛИ того, с кем мы открыли чат прямо сейчас
+            // --- РЕНДЕРИМ ГРУППЫ ---
+            myGroups.forEach(group => {
+                const chatItem = document.createElement('div');
+                chatItem.className = 'chat-mock';
+                
+                // Проверяем, не открыта ли сейчас эта группа
+                if (group.id !== currentChatUser) { 
+                    chatItem.style.background = 'var(--input-bg)';
+                    chatItem.style.color = 'var(--text-main)';
+                }
+                
+                // Делаем аватарку группы чуть квадратной (border-radius: 35%)
+                chatItem.innerHTML = `
+                    <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px;">👥</div>
+                    <div class="chat-info">
+                        <div style="font-weight: 600; font-size: 15px;">${group.name}</div>
+                        <div style="font-size: 13px; opacity: 0.9;">Группа (${group.members.length} уч.)</div>
+                    </div>
+                `;
+                
+                // Пока ставим заглушку. Открытие мы напишем следующим шагом!
+                chatItem.addEventListener('click', () => alert("Открытие группы мы сделаем на следующем шаге!"));
+                sidebar.appendChild(chatItem);
+            });
+
+            // --- РЕНДЕРИМ ЛИЧНЫЕ ЧАТЫ ---
             const usersToShow = allUsers.filter(user => 
                 user.username !== myUsername && 
                 (activeNames.includes(user.username) || user.username === currentChatUser)
@@ -388,7 +415,6 @@
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
                 
-                // Делаем неактивные чаты визуально темнее/светлее
                 if (user.username !== currentChatUser) {
                     chatItem.style.background = 'var(--input-bg)';
                     chatItem.style.color = 'var(--text-main)';
@@ -409,7 +435,6 @@
             console.error("❌ Ошибка загрузки чатов:", error);
         }
     }
-
     // --- 3. ЛОГИКА ОКНА КОНТАКТОВ И ГРУПП ---
     let isCreatingGroup = false;
     let selectedForGroup = new Set();
@@ -545,11 +570,31 @@
                 encryptedKeyBox: JSON.stringify(myEncryptedGroupKeyBox)
             });
 
-            console.log("Группа готова к отправке на сервер!", { groupName, groupMembersData });
-            alert("Ключи сгенерированы! Откройте консоль (F12) чтобы увидеть пакет.");
-            
-            document.getElementById('contacts-modal').style.display = 'none';
+// 4. Отправляем зашифрованные данные на наш новый серверный эндпоинт
+            const response = await fetch('/api/groups/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    groupName: groupName,
+                    members: groupMembersData
+                })
+            });
 
+            const data = await response.json();
+            
+            if (data.success) {
+                alert(`Группа "${groupName}" успешно создана!`);
+                document.getElementById('contacts-modal').style.display = 'none';
+                
+                // Сбрасываем форму
+                groupNameInput.value = '';
+                isCreatingGroup = false;
+                
+                // TODO: Здесь мы позже вызовем функцию обновления сайдбара, 
+                // чтобы группа появилась в списке слева.
+            } else {
+                alert("Ошибка сервера при сохранении группы.");
+            }
         } catch (error) {
             console.error("Ошибка при создании группы:", error);
             alert("Произошла ошибка при генерации ключей.");

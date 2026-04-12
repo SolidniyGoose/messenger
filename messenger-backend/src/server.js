@@ -34,6 +34,55 @@ app.get('/api/history/:user1/:user2', async (req, res) => {
     }
 });
 
+// --- ЭНДПОИНТ ДЛЯ СОЗДАНИЯ ГРУППЫ ---
+app.post('/api/groups/create', async (req, res) => {
+    try {
+        const { groupName, members } = req.body;
+
+        // Используем Prisma, чтобы создать группу и сразу прикрепить к ней всех участников
+        const newGroup = await prisma.group.create({
+            data: {
+                name: groupName,
+                // Магия Prisma: создаем связанные записи (GroupMember) на лету
+                members: {
+                    create: members.map(m => ({
+                        username: m.username,
+                        encryptedKeyBox: m.encryptedKeyBox
+                    }))
+                }
+            }
+        });
+
+        console.log(`Группа "${groupName}" успешно создана в БД! ID: ${newGroup.id}`);
+        res.json({ success: true, group: newGroup });
+        
+    } catch (error) {
+        console.error("Ошибка при создании группы в БД:", error);
+        res.status(500).json({ success: false, error: "Не удалось создать группу" });
+    }
+});
+
+// --- ЭНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ГРУПП ПОЛЬЗОВАТЕЛЯ ---
+app.get('/api/users/:username/groups', async (req, res) => {
+    try {
+        const username = req.params.username;
+        const groups = await prisma.group.findMany({
+            where: {
+                members: {
+                    some: { username: username } // Ищем группы, где есть этот юзер
+                }
+            },
+            include: {
+                members: true // Включаем участников, чтобы знать их количество
+            }
+        });
+        res.json(groups);
+    } catch (error) {
+        console.error("Ошибка при получении групп:", error);
+        res.status(500).json({ error: "Ошибка сервера" });
+    }
+});
+
 // Инициализация Socket.IO с увеличенным лимитом для файлов
 const io = new Server(server, {
     cors: {
