@@ -363,9 +363,21 @@
             avatar.innerHTML = currentChatUser.charAt(0).toUpperCase(); // Заглушка
             
             // Подгружаем профиль собеседника!
+            // --- КЭШИРОВАННАЯ ЗАГРУЗКА ПРОФИЛЯ ---
             try {
-                const res = await fetch(`/api/users/${currentChatUser}?_t=` + Date.now());
-                const userData = await res.json();
+                let userData;
+                if (APP_CACHE.profiles.has(currentChatUser)) {
+                    // Берем из памяти моментально!
+                    userData = APP_CACHE.profiles.get(currentChatUser).data;
+                    APP_CACHE.profiles.get(currentChatUser).timestamp = Date.now();
+                } else {
+                    // Идем на сервер и сохраняем в кэш
+                    const res = await fetch(`/api/users/${currentChatUser}?_t=` + Date.now());
+                    userData = await res.json();
+                    if (userData && !userData.error) {
+                        APP_CACHE.profiles.set(currentChatUser, { data: userData, timestamp: Date.now() });
+                    }
+                }
                 
                 if (userData && !userData.error) {
                     nameEl.textContent = userData.displayName || userData.username;
@@ -375,9 +387,7 @@
                         avatar.innerHTML = (userData.displayName || userData.username).charAt(0).toUpperCase();
                     }
                 }
-            } catch (e) {
-                console.error("Ошибка профиля собеседника", e);
-            }
+            } catch (e) { console.error("Ошибка профиля собеседника", e); }
         }
     });
 
@@ -400,6 +410,55 @@
     let currentSharedKey = null; // <--- Для общего секрета
     let currentChatUser = null;  // <--- Имя текущего собеседника
     let currentChatIsGroup = false;
+
+    // --- СИСТЕМА КЭШИРОВАНИЯ (ОПТИМИЗАЦИЯ ПАМЯТИ) ---
+    const APP_CACHE = {
+        profiles: new Map(), // Для профилей собеседников (аватарки/имена)
+        media: new Map(),    // Для расшифрованных файлов (фото, видео, аудио)
+        PROFILE_TTL: 5 * 60 * 1000, // Профили храним 5 минут
+        MEDIA_TTL: 10 * 60 * 1000   // Медиа файлы храним 10 минут
+    };
+
+    // Сборщик мусора (Запускается каждую минуту и удаляет старье)
+    setInterval(() => {
+        const now = Date.now();
+        
+        // Чистим профили
+        APP_CACHE.profiles.forEach((value, key) => {
+            if (now - value.timestamp > APP_CACHE.PROFILE_TTL) APP_CACHE.profiles.delete(key);
+        });
+
+        // Чистим тяжелые медиафайлы (ОЧЕНЬ ВАЖНО ОСВОБОЖДАТЬ ПАМЯТЬ БРАУЗЕРА)
+        APP_CACHE.media.forEach((value, key) => {
+            if (now - value.timestamp > APP_CACHE.MEDIA_TTL) {
+                URL.revokeObjectURL(value.url); // Уничтожаем ссылку на Blob в памяти!
+                APP_CACHE.media.delete(key);
+            }
+        });
+    }, 60000);
+
+    // Функция-помощник для мгновенного получения расшифрованного медиа
+    async function getDecryptedMediaUrl(box, key) {
+        if (!box.ciphertext) return null;
+
+        // Если файл уже расшифрован и лежит в кэше — отдаем его МГНОВЕННО!
+        if (APP_CACHE.media.has(box.ciphertext)) {
+            APP_CACHE.media.get(box.ciphertext).timestamp = Date.now(); // Обновляем время жизни
+            return APP_CACHE.media.get(box.ciphertext).url;
+        }
+
+        // Если в кэше нет — расшифровываем по-настоящему
+        const decryptedBuffer = await decryptMessage(box, key);
+        if (!decryptedBuffer) return null;
+
+        const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+        const url = URL.createObjectURL(blob);
+        
+        // Сохраняем в кэш для будущих открытий
+        APP_CACHE.media.set(box.ciphertext, { url: url, timestamp: Date.now() });
+        return url;
+    }
+
     
     // --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Из Base64 обратно в байты ---
     function base64ToArrayBuffer(base64) {
@@ -494,31 +553,29 @@
             for (let msg of history) {
                 try {
                     const box = msg.secretBox;
-                    const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                    const type = msg.sender === myUsername ? 'my-message' : 'other-message';
+                    const senderPrefix = (currentChatIsGroup && type === 'other-message') ? `<b>${msg.sender}:</b><br>` : '';
                     
-                    if (decryptedBuffer) {
-                        const type = msg.sender === myUsername ? 'my-message' : 'other-message';
-                        
-                        // Если это старое сообщение (без box.type) или текст:
-                        // Если это старое сообщение (без box.type) или текст:
-                        if (!box.type || box.type === 'TEXT') {
+                    if (!box.type || box.type === 'TEXT') {
+                        // Текст расшифровываем обычным способом (он легкий, его можно не кэшировать)
+                        const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                        if (decryptedBuffer) {
                             const text = bufferToText(decryptedBuffer);
-                            displayMessage(text, type, new Date(msg.createdAt), false, '', msg.isRead);
-                        } else if (box.type === 'AUDIO') {
-                            // АУДИО
-                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
-                            const url = URL.createObjectURL(blob);
-                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, true, false); 
-                        } else if (box.type === 'VIDEO_CIRCLE') {
-                            // КРУЖОЧКИ
-                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
-                            const url = URL.createObjectURL(blob);
-                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, false, true); 
-                        } else {
-                            // КАРТИНКИ И ФАЙЛЫ
-                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
-                            const fileUrl = URL.createObjectURL(blob);
-                            displayMessage(fileUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
+                            const displayText = type === 'other-message' ? senderPrefix + text : text;
+                            displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead);
+                        }
+                    } else {
+                        // --- ИСПОЛЬЗУЕМ КЭШ ДЛЯ ТЯЖЕЛЫХ ФАЙЛОВ ---
+                        const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
+                        
+                        if (mediaUrl) {
+                            if (box.type === 'AUDIO') {
+                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false); 
+                            } else if (box.type === 'VIDEO_CIRCLE') {
+                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true); 
+                            } else {
+                                displayMessage(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
+                            }
                         }
                     }
                 } catch(e) { console.error("Ошибка истории", e); }
@@ -599,35 +656,32 @@
             for (let msg of history) {
                 try {
                     const box = msg.secretBox;
-                    // Взламываем сейф сообщения общим ключом группы!
-                    const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                    const type = msg.sender === myUsername ? 'my-message' : 'other-message';
+                    const senderPrefix = (currentChatIsGroup && type === 'other-message') ? `<b>${msg.sender}:</b><br>` : '';
                     
-                    if (decryptedBuffer) {
-                        const type = msg.sender === myUsername ? 'my-message' : 'other-message';
-                        
-                        // Небольшой трюк: добавляем имя отправителя для чужих сообщений в группе
-                        const senderPrefix = (type === 'other-message') ? `<b>${msg.sender}:</b><br>` : '';
-                        
-                        if (!box.type || box.type === 'TEXT') {
+                    if (!box.type || box.type === 'TEXT') {
+                        // Текст расшифровываем обычным способом (он легкий, его можно не кэшировать)
+                        const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                        if (decryptedBuffer) {
                             const text = bufferToText(decryptedBuffer);
-                            // Если это текст, добавляем имя (только для чужих)
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
                             displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead);
-                        } else if (box.type === 'AUDIO') {
-                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
-                            const url = URL.createObjectURL(blob);
-                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, true, false); 
-                        } else if (box.type === 'VIDEO_CIRCLE') {
-                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
-                            const url = URL.createObjectURL(blob);
-                            displayMessage(url, type, new Date(msg.createdAt), false, '', msg.isRead, false, true); 
-                        } else {
-                            const blob = new Blob([decryptedBuffer], { type: box.mimeType });
-                            const fileUrl = URL.createObjectURL(blob);
-                            displayMessage(fileUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
+                        }
+                    } else {
+                        // --- ИСПОЛЬЗУЕМ КЭШ ДЛЯ ТЯЖЕЛЫХ ФАЙЛОВ ---
+                        const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
+                        
+                        if (mediaUrl) {
+                            if (box.type === 'AUDIO') {
+                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false); 
+                            } else if (box.type === 'VIDEO_CIRCLE') {
+                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true); 
+                            } else {
+                                displayMessage(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
+                            }
                         }
                     }
-                } catch(e) { console.error("Ошибка расшифровки сообщения в истории:", e); }
+                } catch(e) { console.error("Ошибка истории", e); }
             }
             
             // Прокручиваем чат в самый низ
