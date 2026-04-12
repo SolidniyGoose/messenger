@@ -436,9 +436,10 @@
         APP_CACHE.profiles.forEach((value, key) => {
             if (now - value.timestamp > APP_CACHE.PROFILE_TTL) {
                 APP_CACHE.profiles.delete(key);
-                APP_CACHE.groups.clear();
             }
         });
+
+        APP_CACHE.groups.clear();
 
         // Чистим тяжелые медиафайлы (ОЧЕНЬ ВАЖНО ОСВОБОЖДАТЬ ПАМЯТЬ БРАУЗЕРА)
         APP_CACHE.media.forEach((value, key) => {
@@ -1108,9 +1109,16 @@
         myUsername = username;
         socket.emit('register_user', myUsername);
         
-        // Рисуем имя в меню
-        document.querySelector('.drawer-user-info .name').textContent = username;
-        document.querySelector('.drawer-avatar').textContent = username.charAt(0).toUpperCase();
+        // Рисуем имя и аватарку в меню
+        const finalName = localStorage.getItem('displayName') || username;
+        const finalAvatar = localStorage.getItem('userAvatar');
+
+        document.querySelector('.drawer-user-info .name').textContent = finalName;
+        if (finalAvatar) {
+            document.querySelector('.drawer-avatar').innerHTML = `<img src="${finalAvatar}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+        } else {
+            document.querySelector('.drawer-avatar').textContent = finalName.charAt(0).toUpperCase();
+        }
 
         await loadActiveChats();
         setInterval(loadActiveChats, 5000); // Автообновление контактов
@@ -1146,8 +1154,20 @@
             .then(rawPub => {
                 myPublicKeyBase64 = btoa(String.fromCharCode.apply(null, new Uint8Array(rawPub)));
                 socket.emit('register_user', myUsername);
-                document.querySelector('.drawer-user-info .name').textContent = myUsername;
-                document.querySelector('.drawer-avatar').textContent = myUsername.charAt(0).toUpperCase();
+                
+                // --- ИСПРАВЛЕНИЕ: Восстанавливаем аватарку из памяти! ---
+                const savedDisplayName = localStorage.getItem('displayName') || myUsername;
+                const savedAvatar = localStorage.getItem('userAvatar');
+                
+                document.querySelector('.drawer-user-info .name').textContent = savedDisplayName;
+                
+                if (savedAvatar) {
+                    document.querySelector('.drawer-avatar').innerHTML = `<img src="${savedAvatar}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+                } else {
+                    document.querySelector('.drawer-avatar').textContent = savedDisplayName.charAt(0).toUpperCase();
+                }
+                // ---------------------------------------------------------
+                
                 loadActiveChats();
                 setInterval(loadActiveChats, 5000);
             });
