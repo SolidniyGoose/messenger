@@ -128,6 +128,28 @@ app.post('/api/groups/:id/update-avatar', async (req, res) => {
     }
 });
 
+// Выйти из группы
+app.post('/api/groups/:id/leave', async (req, res) => {
+    const { username } = req.body;
+    try {
+        await prisma.groupMember.deleteMany({
+            where: { groupId: req.params.id, username: username }
+        });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Удалить группу полностью
+app.delete('/api/groups/:id', async (req, res) => {
+    try {
+        const groupId = req.params.id;
+        await prisma.message.deleteMany({ where: { groupId } });
+        await prisma.groupMember.deleteMany({ where: { groupId } });
+        await prisma.group.delete({ where: { id: groupId } });
+        res.json({ success: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Инициализация Socket.IO с увеличенным лимитом для файлов
 const io = new Server(server, {
     cors: {

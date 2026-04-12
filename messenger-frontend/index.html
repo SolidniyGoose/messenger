@@ -32,9 +32,11 @@
                 <button id="record-pause-btn" title="Пауза" class="control-btn pause">||</button>
                 <button id="record-stop-btn" title="Остановить" class="control-btn stop">■</button>
             </div>
+            <div id="lock-indicator" style="display: none; position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); color: white; padding: 10px 20px; border-radius: 20px; align-items: center; gap: 10px; z-index: 10; transition: 0.3s;"></div>
 
         </div>
     </div>
+
 <div id="contacts-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
     <div style="background: var(--bg-sidebar); width: 90%; max-width: 400px; border-radius: 20px; padding: 20px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
         
@@ -111,7 +113,16 @@
 
     </div>
 </div>
-
+<div id="group-admin-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3500; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
+    <div style="background: var(--bg-sidebar); width: 90%; max-width: 320px; border-radius: 20px; padding: 20px; box-shadow: var(--shadow-md);">
+        <h3 style="margin: 0 0 15px 0; color: var(--text-main);">Настройки группы</h3>
+        <div style="display: flex; flex-direction: column; gap: 10px;">
+            <button id="admin-leave-btn" style="padding: 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 12px; color: #ff4d4d; font-weight: 500; cursor: pointer;">Выйти из группы</button>
+            <button id="admin-delete-btn" style="padding: 12px; background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; border-radius: 12px; color: #ff4d4d; font-weight: bold; cursor: pointer; display: none;">Удалить группу для всех</button>
+            <button id="close-admin-btn" style="margin-top: 10px; background: none; border: none; color: var(--text-muted); cursor: pointer;">Закрыть</button>
+        </div>
+    </div>
+</div>
 <div id="msg-context-backdrop" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 3999;"></div>
 
 <div id="msg-context-menu" style="display: none; position: fixed; background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.5); z-index: 4000; flex-direction: column; overflow: hidden; min-width: 180px; padding: 5px 0; animation: fadeInMenu 0.15s ease;">
@@ -160,6 +171,7 @@
             <span class="chat-name">Глобальный чат</span>
             <span class="chat-status">онлайн</span>
         </div>
+        <button id="group-settings-btn" style="display: none; background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; margin-left: auto; padding: 5px 10px;">⋮</button>
     </div>
 
     <div class="messages" id="messages-list"></div>
@@ -763,6 +775,44 @@
         }
     }
 
+const groupSettingsBtn = document.getElementById('group-settings-btn');
+const groupAdminModal = document.getElementById('group-admin-modal');
+
+// Показываем кнопку "Три точки" только если это группа
+function updateHeaderButtons() {
+    groupSettingsBtn.style.display = currentChatIsGroup ? 'block' : 'none';
+}
+
+// Вставьте вызов updateHeaderButtons() в конец функций openChatWith и openGroupChat
+
+groupSettingsBtn.addEventListener('click', () => {
+    groupAdminModal.style.display = 'flex';
+    // Тут можно добавить проверку: если вы создатель группы, показывать кнопку удаления
+    document.getElementById('admin-delete-btn').style.display = 'block'; 
+});
+
+// Выход из группы
+document.getElementById('admin-leave-btn').addEventListener('click', async () => {
+    if (!confirm("Вы уверены, что хотите покинуть группу?")) return;
+    const res = await fetch(`/api/groups/${currentChatUser}/leave`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: myUsername })
+    });
+    if (res.ok) location.reload();
+});
+
+// Удаление группы
+document.getElementById('admin-delete-btn').addEventListener('click', async () => {
+    if (!confirm("ВНИМАНИЕ! Это удалит группу и всю историю для всех участников. Продолжить?")) return;
+    const res = await fetch(`/api/groups/${currentChatUser}`, { method: 'DELETE' });
+    if (res.ok) location.reload();
+});
+
+document.getElementById('close-admin-btn').addEventListener('click', () => {
+    groupAdminModal.style.display = 'none';
+});
+
 // --- 2. ФУНКЦИЯ: ЗАГРУЗКА АКТИВНЫХ ЧАТОВ И ГРУПП ---
     // --- 2. ФУНКЦИЯ: ЗАГРУЗКА АКТИВНЫХ ЧАТОВ И ГРУПП ---
     async function loadActiveChats() {
@@ -1349,11 +1399,12 @@
     }
 
     // Глобальная функция открытия фото/альбома
+    // Исправленная функция открытия
     window.openGallery = function(urlsString, startIndex = 0) {
-        currentGalleryImages = urlsString.split(','); // Получаем массив URL
+        currentGalleryImages = urlsString.split(','); 
         currentGalleryIndex = startIndex;
         updateGalleryUI();
-        imageViewer.style.display = 'flex';
+        imageViewer.classList.add('show'); // Используем класс из CSS
     };
 
     viewerPrevBtn.addEventListener('click', (e) => {
@@ -1369,7 +1420,10 @@
     });
 
     // Закрытие галереи
-    const closeGallery = () => { imageViewer.style.display = 'none'; imageViewerImg.src = ''; };
+    const closeGallery = () => { 
+        imageViewer.classList.remove('show'); // Убираем класс
+        setTimeout(() => { imageViewerImg.src = ''; }, 300); // Очищаем после анимации
+    };
     document.getElementById('viewer-close-btn').addEventListener('click', closeGallery);
     imageViewer.addEventListener('click', (e) => { if (e.target === imageViewer || e.target.classList.contains('viewer-img-container')) closeGallery(); });
 
