@@ -27,24 +27,59 @@ module.exports = (io) => {
 
         // ... (дальше идут ваши старые socket.on('send_message') и т.д.)
 
+        // --- ОБНОВЛЕННАЯ МАРШРУТИЗАЦИЯ СООБЩЕНИЙ ---
         socket.on('send_message', async (data) => {
             try {
                 const payload = JSON.parse(data.text);
-                const recipientSocketId = onlineUsers.get(payload.recipient);
 
-                await prisma.message.create({
-                    data: {
-                        sender: payload.sender,
-                        recipient: payload.recipient,
-                        secretBox: payload.secretBox,
-                        isRead: false // По умолчанию не прочитано
+                if (payload.isGroup) {
+                    // === ЛОГИКА ДЛЯ ГРУПП ===
+                    
+                    // 1. Сохраняем сообщение в БД с привязкой к ID группы
+                    await prisma.message.create({
+                        data: {
+                            sender: payload.sender,
+                            groupId: payload.groupId,
+                            secretBox: payload.secretBox
+                        }
+                    });
+
+                    // 2. Ищем всех участников этой группы
+                    const group = await prisma.group.findUnique({
+                        where: { id: payload.groupId },
+                        include: { members: true }
+                    });
+
+                    if (group) {
+                        // 3. Рассылаем всем онлайн-участникам (кроме самого отправителя)
+                        group.members.forEach(member => {
+                            if (member.username !== payload.sender) {
+                                const memberSocketId = onlineUsers.get(member.username);
+                                if (memberSocketId) {
+                                    // Отправляем пакет участнику
+                                    io.to(memberSocketId).emit('receive_message', { text: JSON.stringify(payload) });
+                                }
+                            }
+                        });
                     }
-                });
+                } else {
+                    // === СТАРАЯ ЛОГИКА ДЛЯ ЛИЧНЫХ ЧАТОВ ===
+                    await prisma.message.create({
+                        data: {
+                            sender: payload.sender,
+                            recipient: payload.recipient,
+                            secretBox: payload.secretBox
+                        }
+                    });
 
-                if (recipientSocketId) {
-                    io.to(recipientSocketId).emit('receive_message', data);
+                    const recipientSocketId = onlineUsers.get(payload.recipient);
+                    if (recipientSocketId) {
+                        io.to(recipientSocketId).emit('receive_message', { text: JSON.stringify(payload) });
+                    }
                 }
-            } catch (e) { console.error("Ошибка маршрутизации:", e); }
+            } catch (e) {
+                console.error("Ошибка при отправке сообщения:", e);
+            }
         });
 
         // --- НОВОЕ: ОБРАБОТКА ПРОЧИТАННЫХ СООБЩЕНИЙ ---

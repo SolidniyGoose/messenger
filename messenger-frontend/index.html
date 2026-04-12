@@ -1096,7 +1096,9 @@
             // ТРЮК: Прячем тип сообщения прямо в secretBox, чтобы не менять БД!
             const payload = {
                 sender: myUsername,
-                recipient: currentChatUser,
+                recipient: currentChatIsGroup ? null : currentChatUser,
+                groupId: currentChatIsGroup ? currentChatUser : null,
+                isGroup: currentChatIsGroup,
                 secretBox: { ...encryptedData, type: 'TEXT' }
             };
 
@@ -1129,7 +1131,9 @@
 
             const payload = {
                 sender: myUsername,
-                recipient: currentChatUser,
+                recipient: currentChatIsGroup ? null : currentChatUser,
+                groupId: currentChatIsGroup ? currentChatUser : null,
+                isGroup: currentChatIsGroup,
                 secretBox: { 
                     ...encryptedData, 
                     type: isImage ? 'IMAGE' : 'FILE',
@@ -1246,7 +1250,9 @@
 
                 const payload = {
                     sender: myUsername,
-                    recipient: currentChatUser,
+                    recipient: currentChatIsGroup ? null : currentChatUser,
+                    groupId: currentChatIsGroup ? currentChatUser : null,
+                    isGroup: currentChatIsGroup,
                     secretBox: { 
                         ...encryptedData, 
                         type: 'VIDEO_CIRCLE',
@@ -1431,7 +1437,9 @@
                     // Упаковываем в секретный сейф с типом AUDIO
                     const payload = {
                         sender: myUsername,
-                        recipient: currentChatUser,
+                        recipient: currentChatIsGroup ? null : currentChatUser,
+                        groupId: currentChatIsGroup ? currentChatUser : null,
+                        isGroup: currentChatIsGroup,
                         secretBox: { 
                             ...encryptedData, 
                             type: 'AUDIO',
@@ -1527,7 +1535,15 @@
     socket.on('receive_message', async (data) => {
         try {
             const payload = JSON.parse(data.text);
-            if (payload.sender !== currentChatUser) return;
+
+            // МАРШРУТИЗАЦИЯ: Проверяем, открыт ли у нас нужный чат
+            if (payload.isGroup) {
+                // Для групп: проверяем, открыта ли именно ЭТА группа
+                if (payload.groupId !== currentChatUser) return;
+            } else {
+                // Для личных чатов: проверяем, открыт ли чат с ЭТИМ отправителем
+                if (payload.sender !== currentChatUser) return;
+            }
 
             const box = payload.secretBox;
             const decryptedBuffer = await decryptMessage(box, currentSharedKey);
