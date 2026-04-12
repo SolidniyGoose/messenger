@@ -51,6 +51,27 @@
         <button id="confirm-group-btn" style="display: none; margin-top: 15px; padding: 12px; background: var(--gradient-primary); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: bold;">Создать группу</button>
     </div>
 </div>
+<div id="profile-edit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3001; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
+    <div style="background: var(--bg-sidebar); width: 90%; max-width: 350px; border-radius: 20px; padding: 25px; display: flex; flex-direction: column; align-items: center; box-shadow: var(--shadow-md);">
+        <h3 style="margin: 0 0 20px 0; color: var(--text-main);">Редактировать профиль</h3>
+        
+        <div style="position: relative; margin-bottom: 20px;">
+            <div id="profile-preview-avatar" style="width: 100px; height: 100px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: bold; overflow: hidden;"></div>
+            <button id="delete-avatar-btn" title="Удалить фото" style="position: absolute; top: -5px; right: -5px; background: #ff4d4d; color: white; border: none; border-radius: 50%; width: 25px; height: 25px; cursor: pointer; display: none;">&times;</button>
+        </div>
+
+        <input type="file" id="avatar-input" accept="image/*" style="display: none;">
+        <button id="upload-avatar-btn" style="margin-bottom: 20px; padding: 8px 15px; background: var(--input-bg); color: var(--primary-color); border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer; font-size: 14px;">Выбрать фото</button>
+
+        <input type="text" id="display-name-input" placeholder="Отображаемое имя" style="width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); color: var(--text-main); outline: none;">
+        
+        <div style="display: flex; gap: 10px; width: 100%;">
+            <button id="cancel-profile-btn" style="flex: 1; padding: 12px; background: var(--input-bg); color: var(--text-main); border: none; border-radius: 12px; cursor: pointer;">Отмена</button>
+            <button id="save-profile-btn" style="flex: 1; padding: 12px; background: var(--gradient-primary); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: bold;">Сохранить</button>
+        </div>
+    </div>
+</div>
+
 <div id="chat-info-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
     <div style="background: var(--bg-sidebar); width: 90%; max-width: 400px; border-radius: 20px; overflow: hidden; display: flex; flex-direction: column; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
         
@@ -60,6 +81,10 @@
         
         <div style="display: flex; flex-direction: column; align-items: center; padding: 0 20px 20px; border-bottom: 1px solid var(--border-color);">
             <div id="info-avatar" style="width: 100px; height: 100px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: bold; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);"></div>
+            <div id="group-avatar-edit-controls" style="display: none; margin-top: 10px;">
+                <input type="file" id="group-avatar-input" accept="image/*" style="display: none;">
+                <button id="change-group-avatar-btn" style="padding: 5px 12px; background: var(--input-bg); color: var(--primary-color); border: 1px solid var(--border-color); border-radius: 8px; cursor: pointer; font-size: 12px;">Изменить фото группы</button>
+            </div>
             <h2 id="info-name" style="margin: 0 0 5px 0; color: var(--text-main); font-size: 24px;">Название</h2>
             <span id="info-status" style="color: var(--primary-color); font-size: 14px; font-weight: 500;">статус</span>
         </div>
@@ -1165,6 +1190,117 @@
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && imageViewer.classList.contains('show')) {
             imageViewer.classList.remove('show');
+        }
+    });
+
+
+    // --- ПЕРЕМЕННЫЕ ПРОФИЛЯ ---
+    const profileModal = document.getElementById('profile-edit-modal');
+    const profileBtn = document.querySelector('.drawer-menu li:first-child'); // Пункт "Профиль"
+    const avatarInput = document.getElementById('avatar-input');
+    const previewAvatar = document.getElementById('profile-preview-avatar');
+    const displayNameInput = document.getElementById('display-name-input');
+    const deleteAvatarBtn = document.getElementById('delete-avatar-btn');
+    
+    let tempAvatarBase64 = null;
+
+    // Открытие редактирования профиля
+    profileBtn.addEventListener('click', () => {
+        drawer.classList.remove('open');
+        backdrop.classList.remove('show');
+        profileModal.style.display = 'flex';
+        
+        // Загружаем текущие данные из localStorage
+        const savedName = localStorage.getItem('displayName') || myUsername;
+        const savedAvatar = localStorage.getItem('userAvatar');
+        
+        displayNameInput.value = savedName;
+        updatePreview(savedAvatar, myUsername);
+    });
+
+    function updatePreview(base64, name) {
+        if (base64) {
+            previewAvatar.innerHTML = `<img src="${base64}" style="width:100%; height:100%; object-fit:cover;">`;
+            deleteAvatarBtn.style.display = 'block';
+            tempAvatarBase64 = base64;
+        } else {
+            previewAvatar.innerHTML = name.charAt(0).toUpperCase();
+            deleteAvatarBtn.style.display = 'none';
+            tempAvatarBase64 = null;
+        }
+    }
+
+    // Обработка выбора файла
+    document.getElementById('upload-avatar-btn').addEventListener('click', () => avatarInput.click());
+    
+    avatarInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => updatePreview(event.target.result, myUsername);
+            reader.readAsDataURL(file);
+        }
+    });
+
+    // Удаление аватара (возврат к исходной)
+    deleteAvatarBtn.addEventListener('click', () => updatePreview(null, myUsername));
+
+    // Сохранение профиля
+    document.getElementById('save-profile-btn').addEventListener('click', () => {
+        const newName = displayNameInput.value.trim() || myUsername;
+        localStorage.setItem('displayName', newName);
+        
+        if (tempAvatarBase64) {
+            localStorage.setItem('userAvatar', tempAvatarBase64);
+        } else {
+            localStorage.removeItem('userAvatar');
+        }
+
+        // Обновляем UI в меню
+        document.querySelector('.drawer-user-info .name').textContent = newName;
+        const drawerAvatar = document.querySelector('.drawer-avatar');
+        if (tempAvatarBase64) {
+            drawerAvatar.innerHTML = `<img src="${tempAvatarBase64}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`;
+        } else {
+            drawerAvatar.innerHTML = newName.charAt(0).toUpperCase();
+        }
+
+        profileModal.style.display = 'none';
+        alert("Профиль обновлен!");
+    });
+
+    document.getElementById('cancel-profile-btn').addEventListener('click', () => profileModal.style.display = 'none');
+
+    // --- ЛОГИКА АВАТАРОК ГРУПП ---
+    const changeGroupAvatarBtn = document.getElementById('change-group-avatar-btn');
+    const groupAvatarInput = document.getElementById('group-avatar-input');
+
+    // Модифицируем показ окна информации чата
+    chatHeaderInfo.addEventListener('click', async () => {
+        // ... (ваш старый код загрузки инфы) ...
+        const groupControls = document.getElementById('group-avatar-edit-controls');
+        
+        if (currentChatIsGroup) {
+            groupControls.style.display = 'block';
+            // Подгружаем аватар группы из базы (если он там будет)
+        } else {
+            groupControls.style.display = 'none';
+        }
+    });
+
+    changeGroupAvatarBtn.addEventListener('click', () => groupAvatarInput.click());
+
+    groupAvatarInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (file && currentChatIsGroup) {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const base64 = event.target.result;
+                // Здесь будет fetch запрос на сервер для обновления аватара группы в БД
+                document.getElementById('info-avatar').innerHTML = `<img src="${base64}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
+                alert("Аватар группы изменен (локально, скоро добавим сохранение в БД)");
+            };
+            reader.readAsDataURL(file);
         }
     });
 
