@@ -112,17 +112,14 @@
     </div>
 </div>
 
-<div id="msg-context-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 4000; justify-content: center; align-items: flex-end; backdrop-filter: blur(2px);">
-    <div style="background: var(--bg-sidebar); width: 100%; max-width: 400px; border-radius: 20px 20px 0 0; padding: 20px; display: flex; flex-direction: column; gap: 10px; animation: slideUp 0.3s ease;">
-        <button id="ctx-reply-btn" style="padding: 15px; background: var(--input-bg); border: none; border-radius: 12px; color: var(--text-main); font-size: 16px; text-align: left; cursor: pointer;">↩️ Ответить</button>
-        
-        <button id="ctx-delete-for-me-btn" style="padding: 15px; background: var(--input-bg); border: none; border-radius: 12px; color: #ff4d4d; font-size: 16px; text-align: left; cursor: pointer;">👁️ Удалить у себя</button>
-        
-        <button id="ctx-delete-btn" style="padding: 15px; background: var(--input-bg); border: none; border-radius: 12px; color: #ff4d4d; font-size: 16px; text-align: left; cursor: pointer;">🗑️ Удалить у всех</button>
-        <button id="ctx-cancel-btn" style="padding: 15px; background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; margin-top: 5px;">Отмена</button>
-    </div>
+<div id="msg-context-backdrop" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 3999;"></div>
+
+<div id="msg-context-menu" style="display: none; position: fixed; background: var(--bg-sidebar); border: 1px solid var(--border-color); border-radius: 12px; box-shadow: 0 8px 25px rgba(0,0,0,0.5); z-index: 4000; flex-direction: column; overflow: hidden; min-width: 180px; padding: 5px 0; animation: fadeInMenu 0.15s ease;">
+    <button id="ctx-reply-btn" style="padding: 12px 20px; background: transparent; border: none; color: var(--text-main); font-size: 14px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px;" onmouseover="this.style.background='rgba(128,128,128,0.2)'" onmouseout="this.style.background='transparent'">↩️ Ответить</button>
+    <button id="ctx-delete-for-me-btn" style="padding: 12px 20px; background: transparent; border: none; color: #ff4d4d; font-size: 14px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px;" onmouseover="this.style.background='rgba(128,128,128,0.2)'" onmouseout="this.style.background='transparent'">👁️ Удалить у себя</button>
+    <button id="ctx-delete-btn" style="padding: 12px 20px; background: transparent; border: none; color: #ff4d4d; font-size: 14px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px;" onmouseover="this.style.background='rgba(128,128,128,0.2)'" onmouseout="this.style.background='transparent'">🗑️ Удалить у всех</button>
 </div>
-<style> @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } } </style>
+<style> @keyframes fadeInMenu { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } } </style>
 
 <div class="backdrop" id="backdrop"></div>
 
@@ -1554,31 +1551,57 @@
             // === СТАНДАРТНАЯ ОТРИСОВКА ===
             let innerContent = content;
             if (isAudio) innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
-            else if (isImage) innerContent = `<img src="${content}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" />`;
+            else if (isImage) innerContent = `<img src="${content}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" onclick="viewImage(this.src)" />`;
             else if (fileName) innerContent = `<div style="display: flex; align-items: center; gap: 10px;">📄 <b>${fileName}</b></div>`;
             else msgDiv.classList.add('text-message');
 
             msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${timeString}${statusHtml}</span>`;
         }
 
-        // --- ВЕШАЕМ КЛИК ДЛЯ МЕНЮ СООБЩЕНИЯ ---
-        msgDiv.addEventListener('click', (e) => {
-            if (e.target.tagName === 'IMG' || e.target.tagName === 'AUDIO' || e.target.tagName === 'VIDEO') return; 
-            
+       // --- ВЕШАЕМ ПКМ (Десктоп) И ЗАЖАТИЕ (Мобилки) ---
+        let pressTimer;
+
+        const openContextMenu = (x, y) => {
             selectedMessageId = messageId;
-            document.getElementById('msg-context-modal').style.display = 'flex';
+            msgCtxBackdrop.style.display = 'block';
+            msgCtxMenu.style.display = 'flex';
             
-            // Кнопка "Удалить у всех" - только для своих
-            document.getElementById('ctx-delete-btn').style.display = className === 'my-message' ? 'block' : 'none';
-            // Кнопка "Удалить у себя" - всегда показываем!
-            document.getElementById('ctx-delete-for-me-btn').style.display = 'block';
+            // Скрываем кнопку "Удалить у всех", если сообщение чужое
+            document.getElementById('ctx-delete-btn').style.display = className === 'my-message' ? 'flex' : 'none';
             
+            // Подготавливаем текст для ответа
             let previewText = (isImage || isCircleVideo || fileName || isAudio) ? "Медиафайл" : content;
             let senderName = className === 'my-message' ? myUsername : (msgDiv.querySelector('b') ? msgDiv.querySelector('b').textContent.replace(':','') : currentChatUser);
             
             document.getElementById('reply-sender').textContent = senderName;
             document.getElementById('reply-text').textContent = previewText;
+
+            // Высчитываем позицию, чтобы меню не вылезало за края экрана
+            let menuX = x;
+            let menuY = y;
+            if (menuX + 180 > window.innerWidth) menuX = window.innerWidth - 190; // 180 - ширина меню
+            if (menuY + 150 > window.innerHeight) menuY = window.innerHeight - 160; // 150 - высота меню
+
+            msgCtxMenu.style.left = menuX + 'px';
+            msgCtxMenu.style.top = menuY + 'px';
+        };
+
+        // Десктоп: Правая кнопка мыши (ПКМ)
+        msgDiv.addEventListener('contextmenu', (e) => {
+            e.preventDefault(); // Блокируем стандартное серое меню браузера
+            openContextMenu(e.clientX, e.clientY);
         });
+
+        // Мобильные: Долгое нажатие (зажатие)
+        msgDiv.addEventListener('touchstart', (e) => {
+            pressTimer = setTimeout(() => {
+                openContextMenu(e.touches[0].clientX, e.touches[0].clientY);
+            }, 500); // 500 миллисекунд для вызова меню
+        }, { passive: true });
+
+        // Если палец дернулся или отпустил экран раньше 500мс - отменяем меню
+        msgDiv.addEventListener('touchend', () => clearTimeout(pressTimer));
+        msgDiv.addEventListener('touchmove', () => clearTimeout(pressTimer));
 
         messagesList.appendChild(msgDiv);
         messagesList.scrollTop = messagesList.scrollHeight;
@@ -1617,13 +1640,20 @@
         }
     }
 
-    // --- ЛОГИКА МЕНЮ СООБЩЕНИЙ ---
-    const msgCtxModal = document.getElementById('msg-context-modal');
-    
+    // --- ЛОГИКА МЕНЮ СООБЩЕНИЙ (ПЛАВАЮЩЕЕ) ---
+    const msgCtxMenu = document.getElementById('msg-context-menu');
+    const msgCtxBackdrop = document.getElementById('msg-context-backdrop');
 
-    // Кнопка "Отмена"
-    document.getElementById('ctx-cancel-btn').addEventListener('click', () => msgCtxModal.style.display = 'none');
-    msgCtxModal.addEventListener('click', (e) => { if (e.target === msgCtxModal) msgCtxModal.style.display = 'none'; });
+    // Функция закрытия меню
+    function closeMsgMenu() {
+        msgCtxMenu.style.display = 'none';
+        msgCtxBackdrop.style.display = 'none';
+    }
+
+    // Закрытие по клику мимо меню
+    msgCtxBackdrop.addEventListener('click', closeMsgMenu);
+    // Также закрываем при скролле колесиком, чтобы меню не "уезжало"
+    window.addEventListener('wheel', () => { if (msgCtxMenu.style.display === 'flex') closeMsgMenu(); });
 
     // Кнопка "Ответить"
     document.getElementById('ctx-reply-btn').addEventListener('click', () => {
@@ -1632,17 +1662,26 @@
             text: document.getElementById('reply-text').textContent
         };
         replyBanner.style.display = 'flex';
-        msgCtxModal.style.display = 'none';
+        closeMsgMenu();
         messageInput.focus();
     });
 
-    // Отмена ответа (крестик на баннере)
-    document.getElementById('cancel-reply-btn').addEventListener('click', () => {
-        activeReply = null;
-        replyBanner.style.display = 'none';
+    // Кнопка "Удалить у себя"
+    document.getElementById('ctx-delete-for-me-btn').addEventListener('click', () => {
+        if (selectedMessageId) {
+            markAsDeletedLocally(selectedMessageId); 
+            const msgEl = document.getElementById(`msg-${selectedMessageId}`);
+            if (msgEl) {
+                msgEl.style.transition = '0.3s';
+                msgEl.style.transform = 'scale(0.8)';
+                msgEl.style.opacity = '0';
+                setTimeout(() => msgEl.remove(), 300);
+            }
+            closeMsgMenu();
+        }
     });
 
-    // Кнопка "Удалить"
+    // Кнопка "Удалить у всех"
     document.getElementById('ctx-delete-btn').addEventListener('click', () => {
         if (selectedMessageId) {
             socket.emit('delete_message', {
@@ -1652,35 +1691,9 @@
                 recipient: currentChatUser,
                 sender: myUsername
             });
-            msgCtxModal.style.display = 'none';
+            closeMsgMenu();
         }
     });
-    // --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Запоминаем удаленное ---
-    function markAsDeletedLocally(msgId) {
-        let deleted = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
-        if (!deleted.includes(msgId)) {
-            deleted.push(msgId);
-            localStorage.setItem('deletedMessages', JSON.stringify(deleted));
-        }
-    }
-
-    // --- КНОПКА: Удалить у себя ---
-    document.getElementById('ctx-delete-for-me-btn').addEventListener('click', () => {
-        if (selectedMessageId) {
-            markAsDeletedLocally(selectedMessageId); // Сохраняем в память
-            
-            // Красивая анимация исчезновения
-            const msgEl = document.getElementById(`msg-${selectedMessageId}`);
-            if (msgEl) {
-                msgEl.style.transition = '0.3s';
-                msgEl.style.transform = 'scale(0.8)';
-                msgEl.style.opacity = '0';
-                setTimeout(() => msgEl.remove(), 300);
-            }
-            msgCtxModal.style.display = 'none';
-        }
-    });
-
     // Слушатель от сервера: Удаление сообщения из интерфейса
     socket.on('message_deleted', (msgId) => {
         const msgEl = document.getElementById(`msg-${msgId}`);
