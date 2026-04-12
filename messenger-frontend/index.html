@@ -289,6 +289,97 @@
         document.body.classList.remove('mobile-chat-active');
     });
 
+    // --- ЛОГИКА ОКНА ИНФОРМАЦИИ О ЧАТЕ (ПРОФИЛЬ / ГРУППА) ---
+    const chatHeaderInfo = document.querySelector('.chat-header-info');
+    const chatInfoModal = document.getElementById('chat-info-modal');
+    
+    chatHeaderInfo.addEventListener('click', async () => {
+        if (!currentChatUser) return; // Если чат не открыт, ничего не делаем
+        
+        const avatar = document.getElementById('info-avatar');
+        const nameEl = document.getElementById('info-name');
+        const statusEl = document.getElementById('info-status');
+        const membersSection = document.getElementById('info-members-section');
+        const membersList = document.getElementById('info-members-list');
+        const membersCount = document.getElementById('info-members-count');
+        const groupControls = document.getElementById('group-avatar-edit-controls');
+        
+        // Показываем окно сразу (с эффектом загрузки)
+        chatInfoModal.style.display = 'flex';
+        nameEl.textContent = "Загрузка...";
+        
+        // Проверяем, группа ли это
+        const isGroup = typeof currentChatIsGroup !== 'undefined' ? currentChatIsGroup : false;
+
+        if (isGroup) {
+            // --- ЭТО ГРУППА ---
+            groupControls.style.display = 'block'; // Показываем кнопку загрузки фото
+            avatar.innerHTML = "👥"; // Заглушка на долю секунды
+            avatar.style.borderRadius = "35%";
+            
+            try {
+                // Запрашиваем актуальный список групп с сервера
+                const res = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
+                const groups = await res.json();
+                const activeGroup = groups.find(g => g.id === currentChatUser);
+                
+                if (activeGroup) {
+                    nameEl.textContent = activeGroup.name;
+                    statusEl.textContent = "Группа";
+                    membersCount.textContent = activeGroup.members.length;
+                    
+                    // Подгружаем реальную аватарку группы!
+                    if (activeGroup.avatar) {
+                        avatar.innerHTML = `<img src="${activeGroup.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
+                    }
+                    
+                    membersSection.style.display = 'flex';
+                    membersList.innerHTML = '';
+                    
+                    activeGroup.members.forEach(m => {
+                        const isMe = m.username === myUsername;
+                        const mDiv = document.createElement('div');
+                        mDiv.style.cssText = "display: flex; align-items: center; gap: 15px;";
+                        mDiv.innerHTML = `
+                            <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px;">${m.username.charAt(0).toUpperCase()}</div>
+                            <div style="font-weight: 600; color: var(--text-main); font-size: 15px;">
+                                ${m.username} ${isMe ? '<span style="color: var(--text-muted); font-weight: normal;">(Вы)</span>' : ''}
+                            </div>
+                        `;
+                        membersList.appendChild(mDiv);
+                    });
+                }
+            } catch (e) {
+                console.error("Ошибка загрузки инфы о группе:", e);
+                nameEl.textContent = "Ошибка загрузки";
+            }
+        } else {
+            // --- ЭТО ЛИЧНЫЙ ЧАТ ---
+            groupControls.style.display = 'none'; // Прячем кнопку загрузки фото
+            membersSection.style.display = 'none';
+            avatar.style.borderRadius = "50%";
+            nameEl.textContent = currentChatUser;
+            statusEl.textContent = "онлайн";
+            avatar.innerHTML = currentChatUser.charAt(0).toUpperCase(); // Заглушка
+            
+            // Подгружаем профиль собеседника!
+            try {
+                const res = await fetch(`/api/users/${currentChatUser}?_t=` + Date.now());
+                const userData = await res.json();
+                
+                if (userData && !userData.error) {
+                    nameEl.textContent = userData.displayName || userData.username;
+                    if (userData.avatar) {
+                        avatar.innerHTML = `<img src="${userData.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+                    } else {
+                        avatar.innerHTML = (userData.displayName || userData.username).charAt(0).toUpperCase();
+                    }
+                }
+            } catch (e) {
+                console.error("Ошибка профиля собеседника", e);
+            }
+        }
+    });
 
     // Закрытие окна по крестику
     document.getElementById('close-chat-info-btn').addEventListener('click', () => {
@@ -1239,99 +1330,6 @@
     // --- ЛОГИКА АВАТАРОК ГРУПП ---
     const changeGroupAvatarBtn = document.getElementById('change-group-avatar-btn');
     const groupAvatarInput = document.getElementById('group-avatar-input');
-
-    // Модифицируем показ окна информации чата
-    // --- ЛОГИКА ОКНА ИНФОРМАЦИИ О ЧАТЕ (ПРОФИЛЬ / ГРУППА) ---
-    const chatHeaderInfo = document.querySelector('.chat-header-info');
-    const chatInfoModal = document.getElementById('chat-info-modal');
-    
-    chatHeaderInfo.addEventListener('click', async () => {
-        if (!currentChatUser) return; // Если чат не открыт, ничего не делаем
-        
-        const avatar = document.getElementById('info-avatar');
-        const nameEl = document.getElementById('info-name');
-        const statusEl = document.getElementById('info-status');
-        const membersSection = document.getElementById('info-members-section');
-        const membersList = document.getElementById('info-members-list');
-        const membersCount = document.getElementById('info-members-count');
-        const groupControls = document.getElementById('group-avatar-edit-controls');
-        
-        // Показываем окно сразу (с эффектом загрузки)
-        chatInfoModal.style.display = 'flex';
-        nameEl.textContent = "Загрузка...";
-        
-        // Проверяем, группа ли это
-        const isGroup = typeof currentChatIsGroup !== 'undefined' ? currentChatIsGroup : false;
-
-        if (isGroup) {
-            // --- ЭТО ГРУППА ---
-            groupControls.style.display = 'block'; // Показываем кнопку загрузки фото
-            avatar.innerHTML = "👥"; // Заглушка на долю секунды
-            avatar.style.borderRadius = "35%";
-            
-            try {
-                // Запрашиваем актуальный список групп с сервера
-                const res = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
-                const groups = await res.json();
-                const activeGroup = groups.find(g => g.id === currentChatUser);
-                
-                if (activeGroup) {
-                    nameEl.textContent = activeGroup.name;
-                    statusEl.textContent = "Группа";
-                    membersCount.textContent = activeGroup.members.length;
-                    
-                    // Подгружаем реальную аватарку группы!
-                    if (activeGroup.avatar) {
-                        avatar.innerHTML = `<img src="${activeGroup.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
-                    }
-                    
-                    membersSection.style.display = 'flex';
-                    membersList.innerHTML = '';
-                    
-                    activeGroup.members.forEach(m => {
-                        const isMe = m.username === myUsername;
-                        const mDiv = document.createElement('div');
-                        mDiv.style.cssText = "display: flex; align-items: center; gap: 15px;";
-                        mDiv.innerHTML = `
-                            <div style="width: 40px; height: 40px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px;">${m.username.charAt(0).toUpperCase()}</div>
-                            <div style="font-weight: 600; color: var(--text-main); font-size: 15px;">
-                                ${m.username} ${isMe ? '<span style="color: var(--text-muted); font-weight: normal;">(Вы)</span>' : ''}
-                            </div>
-                        `;
-                        membersList.appendChild(mDiv);
-                    });
-                }
-            } catch (e) {
-                console.error("Ошибка загрузки инфы о группе:", e);
-                nameEl.textContent = "Ошибка загрузки";
-            }
-        } else {
-            // --- ЭТО ЛИЧНЫЙ ЧАТ ---
-            groupControls.style.display = 'none'; // Прячем кнопку загрузки фото
-            membersSection.style.display = 'none';
-            avatar.style.borderRadius = "50%";
-            nameEl.textContent = currentChatUser;
-            statusEl.textContent = "онлайн";
-            avatar.innerHTML = currentChatUser.charAt(0).toUpperCase(); // Заглушка
-            
-            // Подгружаем профиль собеседника!
-            try {
-                const res = await fetch(`/api/users/${currentChatUser}?_t=` + Date.now());
-                const userData = await res.json();
-                
-                if (userData && !userData.error) {
-                    nameEl.textContent = userData.displayName || userData.username;
-                    if (userData.avatar) {
-                        avatar.innerHTML = `<img src="${userData.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
-                    } else {
-                        avatar.innerHTML = (userData.displayName || userData.username).charAt(0).toUpperCase();
-                    }
-                }
-            } catch (e) {
-                console.error("Ошибка профиля собеседника", e);
-            }
-        }
-    });
 
     changeGroupAvatarBtn.addEventListener('click', () => groupAvatarInput.click());
 
