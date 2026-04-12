@@ -481,14 +481,15 @@
 
         try {
             // 1. Загружаем личные чаты
-            const usersRes = await fetch('/api/users');
+            // Добавляем ?_t=... с текущим временем, чтобы обмануть кэш браузера
+            const usersRes = await fetch('/api/users?_t=' + Date.now());
             const allUsers = await usersRes.json();
             
-            const activeRes = await fetch(`/api/users/${myUsername}/chats`);
+            const activeRes = await fetch(`/api/users/${myUsername}/chats?_t=` + Date.now());
             const activeNames = await activeRes.json();
 
-            // 2. НОВОЕ: Загружаем группы пользователя
-            const groupsRes = await fetch(`/api/users/${myUsername}/groups`);
+            // То же самое для загрузки групп!
+            const groupsRes = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
             const myGroups = await groupsRes.json();
             
             const sidebar = document.querySelector('.sidebar');
