@@ -115,6 +115,9 @@
 <div id="msg-context-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 4000; justify-content: center; align-items: flex-end; backdrop-filter: blur(2px);">
     <div style="background: var(--bg-sidebar); width: 100%; max-width: 400px; border-radius: 20px 20px 0 0; padding: 20px; display: flex; flex-direction: column; gap: 10px; animation: slideUp 0.3s ease;">
         <button id="ctx-reply-btn" style="padding: 15px; background: var(--input-bg); border: none; border-radius: 12px; color: var(--text-main); font-size: 16px; text-align: left; cursor: pointer;">↩️ Ответить</button>
+        
+        <button id="ctx-delete-for-me-btn" style="padding: 15px; background: var(--input-bg); border: none; border-radius: 12px; color: #ff4d4d; font-size: 16px; text-align: left; cursor: pointer;">👁️ Удалить у себя</button>
+        
         <button id="ctx-delete-btn" style="padding: 15px; background: var(--input-bg); border: none; border-radius: 12px; color: #ff4d4d; font-size: 16px; text-align: left; cursor: pointer;">🗑️ Удалить у всех</button>
         <button id="ctx-cancel-btn" style="padding: 15px; background: transparent; border: none; color: var(--text-muted); font-size: 16px; cursor: pointer; margin-top: 5px;">Отмена</button>
     </div>
@@ -581,8 +584,10 @@
             document.getElementById('messages-list').innerHTML = ''; 
             const histRes = await fetch(`/api/history/${myUsername}/${user.username}`);
             const history = await histRes.json();
-            
+            const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
             for (let msg of history) {
+                // НОВОЕ: Если сообщение в нашем "черном списке", просто пропускаем его!
+                if (deletedLocally.includes(msg.id)) continue;
                 try {
                     const box = msg.secretBox;
                     const type = msg.sender === myUsername ? 'my-message' : 'other-message';
@@ -684,8 +689,11 @@
             
             const histRes = await fetch(`/api/history/group/${group.id}`);
             const history = await histRes.json();
+            const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
             
             for (let msg of history) {
+                // НОВОЕ: Если сообщение в нашем "черном списке", просто пропускаем его!
+                if (deletedLocally.includes(msg.id)) continue;
                 try {
                     const box = msg.secretBox;
                     const type = msg.sender === myUsername ? 'my-message' : 'other-message';
@@ -1555,15 +1563,16 @@
 
         // --- ВЕШАЕМ КЛИК ДЛЯ МЕНЮ СООБЩЕНИЯ ---
         msgDiv.addEventListener('click', (e) => {
-            if (e.target.tagName === 'IMG' || e.target.tagName === 'AUDIO' || e.target.tagName === 'VIDEO') return; // Не открываем меню, если кликнули на саму картинку/плеер
+            if (e.target.tagName === 'IMG' || e.target.tagName === 'AUDIO' || e.target.tagName === 'VIDEO') return; 
             
             selectedMessageId = messageId;
             document.getElementById('msg-context-modal').style.display = 'flex';
             
-            // Скрываем кнопку "Удалить", если сообщение чужое
+            // Кнопка "Удалить у всех" - только для своих
             document.getElementById('ctx-delete-btn').style.display = className === 'my-message' ? 'block' : 'none';
+            // Кнопка "Удалить у себя" - всегда показываем!
+            document.getElementById('ctx-delete-for-me-btn').style.display = 'block';
             
-            // Подготавливаем текст для ответа
             let previewText = (isImage || isCircleVideo || fileName || isAudio) ? "Медиафайл" : content;
             let senderName = className === 'my-message' ? myUsername : (msgDiv.querySelector('b') ? msgDiv.querySelector('b').textContent.replace(':','') : currentChatUser);
             
@@ -1610,6 +1619,7 @@
 
     // --- ЛОГИКА МЕНЮ СООБЩЕНИЙ ---
     const msgCtxModal = document.getElementById('msg-context-modal');
+    
 
     // Кнопка "Отмена"
     document.getElementById('ctx-cancel-btn').addEventListener('click', () => msgCtxModal.style.display = 'none');
@@ -1642,6 +1652,31 @@
                 recipient: currentChatUser,
                 sender: myUsername
             });
+            msgCtxModal.style.display = 'none';
+        }
+    });
+    // --- ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ: Запоминаем удаленное ---
+    function markAsDeletedLocally(msgId) {
+        let deleted = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
+        if (!deleted.includes(msgId)) {
+            deleted.push(msgId);
+            localStorage.setItem('deletedMessages', JSON.stringify(deleted));
+        }
+    }
+
+    // --- КНОПКА: Удалить у себя ---
+    document.getElementById('ctx-delete-for-me-btn').addEventListener('click', () => {
+        if (selectedMessageId) {
+            markAsDeletedLocally(selectedMessageId); // Сохраняем в память
+            
+            // Красивая анимация исчезновения
+            const msgEl = document.getElementById(`msg-${selectedMessageId}`);
+            if (msgEl) {
+                msgEl.style.transition = '0.3s';
+                msgEl.style.transform = 'scale(0.8)';
+                msgEl.style.opacity = '0';
+                setTimeout(() => msgEl.remove(), 300);
+            }
             msgCtxModal.style.display = 'none';
         }
     });
