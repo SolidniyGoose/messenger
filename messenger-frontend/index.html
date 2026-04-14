@@ -1505,6 +1505,18 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }, 300); 
     };
     
+    viewerPrevBtn.addEventListener('click', (e) => {
+        e.stopPropagation(); // Чтобы не закрыть окно
+        currentGalleryIndex = (currentGalleryIndex - 1 + currentGalleryMedia.length) % currentGalleryMedia.length;
+        updateGalleryUI();
+    });
+
+    viewerNextBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        currentGalleryIndex = (currentGalleryIndex + 1) % currentGalleryMedia.length;
+        updateGalleryUI();
+    });
+
     // Закрытие галереи по клику на фон или крестик
     document.getElementById('viewer-close-btn').addEventListener('click', closeGallery);
     imageViewer.addEventListener('click', (e) => { 
@@ -1777,7 +1789,11 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                         </div>`;
                 });
                 
-                innerContent = `<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; width: 240px; border-radius: 8px; overflow: hidden; margin-bottom: 5px;">${gridHtml}</div>`;
+                // --- ФИКС ДЛЯ ОДИНОЧНЫХ ФОТО/ВИДЕО ---
+                // Если файл всего один, делаем 1 колонку (на всю ширину). Если файлов 2 и больше - делаем сетку 2x2.
+                const columns = mediaItems.length === 1 ? '1fr' : 'repeat(2, 1fr)';
+                
+                innerContent = `<div style="display: grid; grid-template-columns: ${columns}; gap: 4px; width: 240px; border-radius: 8px; overflow: hidden; margin-bottom: 5px;">${gridHtml}</div>`;
             }
             else if (isImage) {
                 innerContent = `<img src="${content}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" onclick="openGallery('${content}', 0)" />`;
@@ -1920,6 +1936,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 msgEl.style.opacity = '0';
                 setTimeout(() => msgEl.remove(), 300);
             }
+            // --- НОВОЕ: ВЫЧИЩАЕМ ИЗ КЭША ---
+            APP_CACHE.history.forEach((historyArray, key) => {
+                APP_CACHE.history.set(key, historyArray.filter(msg => msg.id !== msgId));
+            });
             closeMsgMenu();
         }
     });
@@ -1947,6 +1967,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             msgEl.style.opacity = '0';
             setTimeout(() => msgEl.remove(), 300);
         }
+        // --- НОВОЕ: ВЫЧИЩАЕМ ИЗ КЭША ---
+        APP_CACHE.history.forEach((historyArray, key) => {
+            APP_CACHE.history.set(key, historyArray.filter(msg => msg.id !== msgId));
+        });
     });
 
     // --- 5. ОТПРАВКА КАРТИНОК И ФАЙЛОВ ---
@@ -2394,49 +2418,17 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         isRecordingCircle = false;
     });
 
-    // --- ОТПРАВКА НЕСКОЛЬКИХ ФОТО И АЛЬБОМОВ ---
+    // --- ОТПРАВКА МЕДИА (И ОДИНОЧНЫЕ, И АЛЬБОМЫ) ---
     let pendingUploadFiles = [];
 
-    document.getElementById('image-upload').addEventListener('change', (e) => {
-        pendingUploadFiles = Array.from(e.target.files);
-        if (!pendingUploadFiles.length) return;
-
-        if (pendingUploadFiles.length === 1) {
-            // Если фото одно - отправляем как обычно
-            sendFile(pendingUploadFiles[0], true);
-        } else {
-            // Если фото несколько - спрашиваем пользователя
-            document.getElementById('album-prompt-title').textContent = `Отправить ${pendingUploadFiles.length} фото`;
-            document.getElementById('album-prompt-modal').style.display = 'flex';
-        }
-        e.target.value = ''; // Сбрасываем input
-    });
-
-    // Отмена отправки
-    document.getElementById('cancel-album-btn').addEventListener('click', () => {
-        document.getElementById('album-prompt-modal').style.display = 'none';
-        pendingUploadFiles = [];
-    });
-
-    // Отправить как отдельные сообщения
-    document.getElementById('send-separate-btn').addEventListener('click', async () => {
-        document.getElementById('album-prompt-modal').style.display = 'none';
-        for (let file of pendingUploadFiles) {
-            await sendFile(file, true);
-        }
-        pendingUploadFiles = [];
-    });
-
-    // МАГИЯ: Отправить как защищенный Альбом (Группа)
-    document.getElementById('send-as-album-btn').addEventListener('click', async () => {
-        // --- ТОТ САМЫЙ ФИКС ОШИБКИ ---
+    // Единая функция отправки
+    async function sendAsAlbum() {
         if (!currentSharedKey || !currentChatUser) {
             alert("Сначала выберите собеседника слева!");
             document.getElementById('album-prompt-modal').style.display = 'none';
             pendingUploadFiles = [];
             return;
         }
-        // -----------------------------
 
         const btn = document.getElementById('send-as-album-btn');
         btn.textContent = "Шифрование...";
@@ -2446,54 +2438,40 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const encryptedImages = [];
             const localUrls = [];
 
-            // Шифруем каждую картинку / видео
             for (let file of pendingUploadFiles) {
                 const dataBuffer = await readFileAsArrayBuffer(file);
                 const encryptedData = await encryptMessage(dataBuffer, currentSharedKey);
                 encryptedImages.push({
                     ciphertext: encryptedData.ciphertext,
                     iv: encryptedData.iv,
-                    mimeType: file.type, // Сохраняем реальный тип (video/mp4)
+                    mimeType: file.type,
                     fileName: file.name
                 });
-                // НОВОЕ: Сохраняем локально вместе с типом
                 localUrls.push({ url: URL.createObjectURL(file), type: file.type }); 
             }
 
             const msgId = crypto.randomUUID();
-            
-            // Упаковываем весь массив в один secretBox с типом ALBUM
             const payload = {
                 id: msgId,
                 sender: myUsername,
                 recipient: currentChatIsGroup ? null : currentChatUser,
                 groupId: currentChatIsGroup ? currentChatUser : null,
                 isGroup: currentChatIsGroup,
-                secretBox: { 
-                    type: 'ALBUM',
-                    images: encryptedImages, // <--- Массив фото
-                    replyTo: activeReply
-                }
+                secretBox: { type: 'ALBUM', images: encryptedImages, replyTo: activeReply }
             };
 
-            // --- НОВОЕ: СОХРАНЯЕМ В ЛОКАЛЬНУЮ ИСТОРИЮ ---
             appendToHistoryCache(currentChatIsGroup, currentChatUser, {
-                id: msgId,
-                sender: myUsername,
-                secretBox: payload.secretBox,
-                createdAt: new Date().toISOString(),
-                isRead: false
+                id: msgId, sender: myUsername, secretBox: payload.secretBox,
+                createdAt: new Date().toISOString(), isRead: false
             });
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
-            
-            // Отрисовываем локально (передаем массив URL вместо одного)
             displayMessage(localUrls, 'my-message', new Date(), false, '', false, false, false, msgId, activeReply, true);
 
             activeReply = null;
             replyBanner.style.display = 'none';
         } catch (error) {
-            alert("Ошибка при шифровании альбома!");
+            alert("Ошибка при шифровании медиа!");
             console.error(error);
         } finally {
             document.getElementById('album-prompt-modal').style.display = 'none';
@@ -2501,7 +2479,40 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             btn.style.opacity = '1';
             pendingUploadFiles = [];
         }
+    }
+
+    // Слушатель выбора файлов
+    document.getElementById('image-upload').addEventListener('change', (e) => {
+        pendingUploadFiles = Array.from(e.target.files);
+        if (!pendingUploadFiles.length) return;
+
+        if (pendingUploadFiles.length === 1) {
+            // МАГИЯ: Если файл один, сразу отправляем его через механизм альбома
+            sendAsAlbum();
+        } else {
+            document.getElementById('album-prompt-title').textContent = `Отправить ${pendingUploadFiles.length} фото/видео`;
+            document.getElementById('album-prompt-modal').style.display = 'flex';
+        }
+        e.target.value = ''; 
     });
+
+    document.getElementById('cancel-album-btn').addEventListener('click', () => {
+        document.getElementById('album-prompt-modal').style.display = 'none';
+        pendingUploadFiles = [];
+    });
+
+    // Отправить несколькими отдельными баблами
+    document.getElementById('send-separate-btn').addEventListener('click', async () => {
+        document.getElementById('album-prompt-modal').style.display = 'none';
+        const filesCopy = [...pendingUploadFiles];
+        pendingUploadFiles = [];
+        for (let file of filesCopy) {
+            pendingUploadFiles = [file];
+            await sendAsAlbum(); // Вызываем для каждого файла отдельно
+        }
+    });
+
+    document.getElementById('send-as-album-btn').addEventListener('click', sendAsAlbum);
 
     document.getElementById('file-upload').addEventListener('change', (e) => {
         if (e.target.files[0]) sendFile(e.target.files[0], false);
