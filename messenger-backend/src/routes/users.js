@@ -11,6 +11,14 @@ router.post('/register', async (req, res) => {
         return res.status(400).json({ error: "Нужны все данные!" });
     }
 
+    // --- 🛡️ БЕЗОПАСНОСТЬ: ЖЕСТКАЯ ПРОВЕРКА ИМЕНИ ---
+    // Разрешаем только английские/русские буквы, цифры и символы _ - (от 3 до 30 символов)
+    const usernameRegex = /^[a-zA-Zа-яА-Я0-9_-]{3,30}$/;
+    if (!usernameRegex.test(username)) {
+        return res.status(400).json({ error: "Недопустимый никнейм. Используйте только буквы, цифры и символы - _" });
+    }
+    // ------------------------------------------------
+
     try {
         const user = await prisma.user.upsert({
             where: { username: username },

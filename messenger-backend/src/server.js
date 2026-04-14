@@ -113,6 +113,15 @@ app.get('/api/groups/:id', async (req, res) => {
 // Обновление профиля пользователя
 app.post('/api/users/update', async (req, res) => {
     const { username, displayName, avatar } = req.body;
+
+    // --- 🛡️ ЗАЩИТА ОТОБРАЖАЕМОГО ИМЕНИ ---
+    if (displayName && displayName.length > 40) {
+        return res.status(400).json({ success: false, error: "Имя слишком длинное!" });
+    }
+    if (displayName && /[<>]/.test(displayName)) {
+        return res.status(400).json({ success: false, error: "Имя содержит запрещенные символы!" });
+    }
+
     try {
         const updatedUser = await prisma.user.update({
             where: { username },

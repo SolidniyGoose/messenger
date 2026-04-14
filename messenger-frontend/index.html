@@ -467,6 +467,17 @@
     let currentChatUser = null;  // <--- Имя текущего собеседника
     let currentChatIsGroup = false;
 
+    // --- 🛡️ АНТИ-XSS ЗАЩИТА (САНИТАЙЗЕР) ---
+    function escapeHTML(str) {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     // --- СИСТЕМА КЭШИРОВАНИЯ (ОПТИМИЗАЦИЯ ПАМЯТИ) ---
     const APP_CACHE = {
         profiles: new Map(), // Для профилей собеседников (аватарки/имена)
@@ -889,10 +900,11 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     : '👥';
                 
                 // Собираем HTML для группы (без многоточий)
+                const safeGroupName = escapeHTML(group.name);
                 chatItem.innerHTML = `
-                    <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden;">${avatarHtml}</div>
+                    // ... (тут аватарка)
                     <div class="chat-info">
-                        <div style="font-weight: 600; font-size: 15px;">${group.name}</div>
+                        <div style="font-weight: 600; font-size: 15px;">${safeGroupName}</div>
                         <div style="font-size: 13px; opacity: 0.9;">Группа (${group._count.members} уч.)</div>
                     </div>
                 `;
@@ -918,6 +930,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
                 // Определяем имя для отображения (приоритет у displayName)
                 const displayName = user.displayName || user.username;
+                const safeDisplayName = escapeHTML(displayName); // Очищаем!
 
                 // Собираем аватарку (фото или буква)
                 const userAvatarHtml = user.avatar 
@@ -927,10 +940,13 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 // Если есть фото, убираем синий градиент у кружочка, если нет - оставляем
                 const avatarBackground = !user.avatar ? 'background: var(--gradient-primary); color: white;' : '';
 
+                // В блоке РЕНДЕРИМ ЛИЧНЫЕ ЧАТЫ:
+                
+                
                 chatItem.innerHTML = `
                     <div class="avatar" style="${avatarBackground} display: flex; align-items: center; justify-content: center; overflow: hidden;">${userAvatarHtml}</div>
                     <div class="chat-info">
-                        <div style="font-weight: 600; font-size: 15px;">${displayName}</div>
+                        <div style="font-weight: 600; font-size: 15px;">${safeDisplayName}</div>
                         <div style="font-size: 13px; opacity: 0.9;">Нажмите для чата</div>
                     </div>
                 `;
@@ -968,14 +984,16 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 checkboxHtml = `<div style="width: 20px; height: 20px; border-radius: 5px; border: 2px solid ${isSelected ? 'var(--primary-color)' : 'var(--text-muted)'}; background: ${isSelected ? 'var(--primary-color)' : 'transparent'}; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px;">${isSelected ? '✓' : ''}</div>`;
             }
 
+            // Внутри renderContactsList:
+            const safeUsername = escapeHTML(user.username); // Очищаем имя!
+
             item.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 15px;">
-                    <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${user.username.charAt(0).toUpperCase()}</div>
-                    <div style="font-weight: 600; color: var(--text-main); font-size: 16px;">${user.username}</div>
+                    <div style="width: 44px; height: 44px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 18px;">${safeUsername.charAt(0).toUpperCase()}</div>
+                    <div style="font-weight: 600; color: var(--text-main); font-size: 16px;">${safeUsername}</div>
                 </div>
                 ${checkboxHtml}
             `;
-
             item.addEventListener('click', () => {
                 if (isCreatingGroup) {
                     if (selectedForGroup.has(user.username)) {
@@ -1627,12 +1645,13 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         let statusHtml = className === 'my-message' ? `<span class="msg-status ${isRead ? 'status-read' : 'status-sent'}">${isRead ? '✓✓' : '✓'}</span>` : '';
 
         // --- ГЕНЕРИРУЕМ БЛОК ОТВЕТА ВНУТРИ СООБЩЕНИЯ ---
+        // 1. Очищаем блок ответа
         let replyHtml = '';
         if (replyData) {
             replyHtml = `
             <div style="background: rgba(0,0,0,0.1); border-left: 3px solid var(--primary-color); padding: 5px 10px; border-radius: 4px; margin-bottom: 8px; font-size: 12px; opacity: 0.8; cursor: pointer;">
-                <b style="color: var(--primary-color);">${replyData.sender}</b><br>
-                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 200px;">${replyData.text}</span>
+                <b style="color: var(--primary-color);">${escapeHTML(replyData.sender)}</b><br>
+                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; max-width: 200px;">${escapeHTML(replyData.text)}</span>
             </div>`;
         }
 
@@ -1737,6 +1756,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             } 
             else {
                 msgDiv.classList.add('text-message');
+                innerContent = escapeHTML(content);
             }
 
             msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${timeString}${statusHtml}</span>`;
