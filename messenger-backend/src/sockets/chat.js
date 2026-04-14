@@ -33,6 +33,7 @@ module.exports = (io) => {
                 const payload = JSON.parse(data.text);
 
                 if (payload.isGroup) {
+                    
                     // === ЛОГИКА ДЛЯ ГРУПП ===
                     // 1. Сохраняем в БД с привязкой к groupId
                     await prisma.message.create({
@@ -44,11 +45,26 @@ module.exports = (io) => {
                         }
                     });
 
-                    // 2. Ищем всех участников группы
+                    // 1. Ищем группу/канал в базе
                     const group = await prisma.group.findUnique({
                         where: { id: payload.groupId },
                         include: { members: true }
                     });
+
+                    if (!group) return;
+
+                    // --- 🛡️ ЗАЩИТА КАНАЛА ---
+                    if (group.isChannel) {
+                        // В канале может писать только тот, кто его создал 
+                        // (В нашей системе создатель — это тот, кто зашифровал ключ для остальных)
+                        // Для простоты проверим, является ли отправитель первым участником (админом)
+                        // В будущем можно добавить поле "role" в GroupMember
+                        const admin = group.members[0].username; 
+                        if (payload.sender !== admin) {
+                            console.warn(`Попытка записи в канал от ${payload.sender} заблокирована!`);
+                            return; // Просто сбрасываем сообщение
+                        }
+                    }
 
                     if (group) {
                         // 3. Рассылаем всем онлайн-участникам (кроме самого отправителя)

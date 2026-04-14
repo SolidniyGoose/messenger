@@ -51,16 +51,16 @@ app.get('/api/history/group/:groupId', async (req, res) => {
     }
 });
 
-// --- ЭНДПОИНТ ДЛЯ СОЗДАНИЯ ГРУППЫ ---
+// --- ОБНОВЛЕННЫЙ ЭНДПОИНТ СОЗДАНИЯ ---
 app.post('/api/groups/create', async (req, res) => {
     try {
-        const { groupName, members } = req.body;
+        const { groupName, members, isChannel, isPublic } = req.body; // Получаем новые флаги
 
-        // Используем Prisma, чтобы создать группу и сразу прикрепить к ней всех участников
         const newGroup = await prisma.group.create({
             data: {
                 name: groupName,
-                // Магия Prisma: создаем связанные записи (GroupMember) на лету
+                isChannel: isChannel || false,
+                isPublic: isPublic || false,
                 members: {
                     create: members.map(m => ({
                         username: m.username,
@@ -70,13 +70,34 @@ app.post('/api/groups/create', async (req, res) => {
             }
         });
 
-        console.log(`Группа "${groupName}" успешно создана в БД! ID: ${newGroup.id}`);
+        console.log(`Создан ${isChannel ? 'Канал' : 'Группа'}: "${groupName}"`);
         res.json({ success: true, group: newGroup });
         
     } catch (error) {
-        console.error("Ошибка при создании группы в БД:", error);
-        res.status(500).json({ success: false, error: "Не удалось создать группу" });
+        console.error("Ошибка при создании:", error);
+        res.status(500).json({ success: false, error: "Не удалось создать" });
     }
+});
+
+// --- ПОИСК ПУБЛИЧНЫХ КАНАЛОВ ---
+app.get('/api/channels/search', async (req, res) => {
+    const { query } = req.query;
+    try {
+        const channels = await prisma.group.findMany({
+            where: {
+                isChannel: true,
+                isPublic: true,
+                name: { contains: query, mode: 'insensitive' } // Поиск без учета регистра
+            },
+            select: {
+                id: true,
+                name: true,
+                avatar: true,
+                _count: { select: { members: true } }
+            }
+        });
+        res.json(channels);
+    } catch (e) { res.status(500).json({ error: "Ошибка поиска" }); }
 });
 
 // --- ЭНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ГРУПП (ОБЛЕГЧЕННЫЙ - ТОЛЬКО ДЛЯ САЙДБАРА) ---
