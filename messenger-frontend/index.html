@@ -185,7 +185,7 @@
             <button id="cancel-reply-btn" style="background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer;">&times;</button>
         </div>
         <div class="input-area">
-            <input type="file" id="image-upload" accept="image/*" multiple style="display: none;">
+            <input type="file" id="image-upload" accept="image/*,video/*" multiple style="display: none;">
             <input type="file" id="file-upload" style="display: none;">
             
             <span id="camera-btn" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить картинку или видео" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📷</span>
@@ -217,7 +217,8 @@
         <button id="viewer-prev" style="position: absolute; left: 20px; background: rgba(255,255,255,0.2); border: none; color: white; font-size: 24px; width: 50px; height: 50px; border-radius: 50%; cursor: pointer; z-index: 10000; transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">&lt;</button>
         
         <img id="viewer-img" src="" style="max-width: 90vw; max-height: 85vh; object-fit: contain; transition: transform 0.2s; border-radius: 8px;">
-        
+        <video id="viewer-vid" controls style="max-width: 90vw; max-height: 85vh; display: none; border-radius: 8px; box-shadow: 0 10px 50px rgba(0,0,0,0.8); outline: none; background: #000;"></video>
+
         <button id="viewer-next" style="position: absolute; right: 20px; background: rgba(255,255,255,0.2); border: none; color: white; font-size: 24px; width: 50px; height: 50px; border-radius: 50%; cursor: pointer; z-index: 10000; transition: 0.2s;" onmouseover="this.style.background='rgba(255,255,255,0.4)'" onmouseout="this.style.background='rgba(255,255,255,0.2)'">&gt;</button>
     </div>
 </div>
@@ -664,7 +665,8 @@
                         const mediaUrls = [];
                         for (let imgBox of box.images) {
                             const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
-                            if (url) mediaUrls.push(url);
+                            if (url) // Передаем и ссылку, и тип файла!
+                                mediaUrls.push({ url: url || URL.createObjectURL(blob), type: imgBox.mimeType });
                         }
                         displayMessage(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
                     } else {
@@ -796,7 +798,8 @@
                         const mediaUrls = [];
                         for (let imgBox of box.images) {
                             const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
-                            if (url) mediaUrls.push(url);
+                            if (url) // Передаем и ссылку, и тип файла!
+                                mediaUrls.push({ url: url || URL.createObjectURL(blob), type: imgBox.mimeType });
                         }
                         displayMessage(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
                     } else {
@@ -1436,75 +1439,93 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     // --- ПЕРЕМЕННЫЕ И ЛОГИКА ГАЛЕРЕИ (TELEGRAM STYLE) ---
     const imageViewer = document.getElementById('image-viewer');
     const imageViewerImg = document.getElementById('viewer-img');
+    const imageViewerVid = document.getElementById('viewer-vid'); // Плеер
     const viewerPrevBtn = document.getElementById('viewer-prev');
     const viewerNextBtn = document.getElementById('viewer-next');
     const viewerCounter = document.getElementById('viewer-counter');
 
-    let currentGalleryImages = [];
+    let currentGalleryMedia = []; // Теперь тут массив объектов {url, type}
     let currentGalleryIndex = 0;
     let currentScale = 1;
 
     function updateGalleryUI() {
-        imageViewerImg.src = currentGalleryImages[currentGalleryIndex];
-        viewerCounter.textContent = `${currentGalleryIndex + 1} / ${currentGalleryImages.length}`;
+        const media = currentGalleryMedia[currentGalleryIndex];
         
-        // Прячем стрелки, если фото одно
-        viewerPrevBtn.style.display = currentGalleryImages.length > 1 ? 'block' : 'none';
-        viewerNextBtn.style.display = currentGalleryImages.length > 1 ? 'block' : 'none';
+        // Сбрасываем видео при переключении
+        imageViewerVid.pause();
+        imageViewerVid.src = '';
         
-        // Сбрасываем зум при переключении
+        // Если это видео - показываем плеер
+        if (media.type && media.type.startsWith('video/')) {
+            imageViewerImg.style.display = 'none';
+            imageViewerVid.style.display = 'block';
+            imageViewerVid.src = media.url;
+            imageViewerVid.play().catch(e => console.log("Автозапуск отменен", e));
+        } else {
+            // Если это фото - показываем картинку
+            imageViewerVid.style.display = 'none';
+            imageViewerImg.style.display = 'block';
+            imageViewerImg.src = media.url;
+        }
+
+        viewerCounter.textContent = `${currentGalleryIndex + 1} / ${currentGalleryMedia.length}`;
+        viewerPrevBtn.style.display = currentGalleryMedia.length > 1 ? 'block' : 'none';
+        viewerNextBtn.style.display = currentGalleryMedia.length > 1 ? 'block' : 'none';
+        
         currentScale = 1; 
         imageViewerImg.style.transform = `scale(1)`;
     }
 
-    // Глобальная функция открытия фото/альбома
-    // Исправленная функция открытия
-    window.openGallery = function(urlsString, startIndex = 0) {
-        currentGalleryImages = urlsString.split(','); 
-        currentGalleryIndex = startIndex;
-        updateGalleryUI();
-        
-        imageViewer.style.display = 'flex'; // 1. Принудительно делаем блок видимым
-        setTimeout(() => imageViewer.classList.add('show'), 10); // 2. Плавно проявляем
+    // Принимаем закодированную строку JSON вместо простых ссылок
+    window.openGallery = function(encodedMediaString, startIndex = 0) {
+        try {
+            currentGalleryMedia = JSON.parse(decodeURIComponent(encodedMediaString));
+            currentGalleryIndex = startIndex;
+            updateGalleryUI();
+            
+            imageViewer.style.display = 'flex'; 
+            setTimeout(() => imageViewer.classList.add('show'), 10); 
+        } catch (e) {
+            // Защита от старых фото (если там просто ссылка)
+            currentGalleryMedia = [{ url: encodedMediaString, type: 'image/jpeg' }];
+            currentGalleryIndex = 0;
+            updateGalleryUI();
+            imageViewer.style.display = 'flex'; 
+            setTimeout(() => imageViewer.classList.add('show'), 10); 
+        }
     };
 
-    // Закрытие галереи
     const closeGallery = () => { 
-        imageViewer.classList.remove('show'); // 1. Плавно гасим прозрачность
+        imageViewer.classList.remove('show'); 
+        imageViewerVid.pause(); // Останавливаем плеер
         setTimeout(() => { 
-            imageViewer.style.display = 'none'; // 2. Принудительно прячем блок
+            imageViewer.style.display = 'none'; 
             imageViewerImg.src = ''; 
-        }, 300); // Ждем окончания анимации
+            imageViewerVid.src = '';
+        }, 300); 
     };
-
-    viewerPrevBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // Чтобы не закрыть окно
-        currentGalleryIndex = (currentGalleryIndex - 1 + currentGalleryImages.length) % currentGalleryImages.length;
-        updateGalleryUI();
-    });
-
-    viewerNextBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        currentGalleryIndex = (currentGalleryIndex + 1) % currentGalleryImages.length;
-        updateGalleryUI();
-    });
-
     
+    // Закрытие галереи по клику на фон или крестик
     document.getElementById('viewer-close-btn').addEventListener('click', closeGallery);
-    imageViewer.addEventListener('click', (e) => { if (e.target === imageViewer || e.target.classList.contains('viewer-img-container')) closeGallery(); });
+    imageViewer.addEventListener('click', (e) => { 
+        if (e.target === imageViewer || e.target.classList.contains('viewer-img-container')) closeGallery(); 
+    });
 
-    // Зум колесиком (для imageViewerImg)
+    // --- ТОТ САМЫЙ ВОЗВРАЩЕННЫЙ ЗУМ КОЛЕСИКОМ ---
     imageViewer.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        const direction = e.deltaY < 0 ? 1 : -1;
-        currentScale = Math.max(0.5, Math.min(5, currentScale * (direction > 0 ? 1.15 : 1/1.15)));
-        imageViewerImg.style.transform = `scale(${currentScale})`;
+        // Зуммируем только если открыта картинка (для видео зум обычно не делают)
+        if (imageViewerImg.style.display !== 'none') {
+            e.preventDefault();
+            const direction = e.deltaY < 0 ? 1 : -1;
+            currentScale = Math.max(0.5, Math.min(5, currentScale * (direction > 0 ? 1.15 : 1/1.15)));
+            imageViewerImg.style.transform = `scale(${currentScale})`;
+        }
     }, { passive: false });
 
     // Закрытие по Esc
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && imageViewer.classList.contains('show')) {
-            imageViewer.classList.remove('show');
+            closeGallery();
         }
     });
 
@@ -1723,31 +1744,41 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             if (isAudio) {
                 innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
             } 
-            // --- НОВОЕ: ОТРИСОВКА АЛЬБОМА ---
+            // --- НОВОЕ: ОТРИСОВКА АЛЬБОМА (С ВИДЕО) ---
             else if (isAlbum) {
-                // Если передали массив ссылок, делаем плитку
-                const urls = content; 
-                const urlsString = urls.join(','); // Для передачи в функцию onclick
+                const mediaItems = content; // Это массив объектов [{url, type}]
+                // Кодируем массив, чтобы безопасно передать в функцию onclick
+                const encodedMediaString = encodeURIComponent(JSON.stringify(mediaItems)); 
                 let gridHtml = '';
                 
-                // Берем максимум 4 фото для предпросмотра
-                const previewUrls = urls.slice(0, 4);
+                const previewItems = mediaItems.slice(0, 4);
                 
-                previewUrls.forEach((url, i) => {
+                previewItems.forEach((item, i) => {
                     let overlay = '';
-                    // Если фото больше 4, на последнем рисуем затемнение с надписью +N
-                    if (i === 3 && urls.length > 4) {
-                        overlay = `<div style="position:absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:white; font-size:24px; font-weight:bold;">+${urls.length - 3}</div>`;
+                    const isVideo = item.type && item.type.startsWith('video/');
+                    
+                    // Рисуем иконку Play для видео
+                    let playIcon = isVideo ? `<div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(0,0,0,0.5); border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; color:white; font-size:18px; z-index:1;">▶</div>` : '';
+
+                    if (i === 3 && mediaItems.length > 4) {
+                        overlay = `<div style="position:absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:white; font-size:24px; font-weight:bold; z-index:2; border-radius:4px;">+${mediaItems.length - 3}</div>`;
                     }
+                    
+                    // Для превью видео используем тот же тег video, но с фиксацией на первом кадре (#t=0.1)
+                    const previewTag = isVideo 
+                        ? `<video src="${item.url}#t=0.1" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:4px;"></video>`
+                        : `<img src="${item.url}" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:4px;">`;
+
                     gridHtml += `
-                        <div style="position:relative; width: 100%; padding-bottom: 100%; cursor:pointer;" onclick="openGallery('${urlsString}', ${i})">
-                            <img src="${url}" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius: 4px;">
+                        <div style="position:relative; width: 100%; padding-bottom: 100%; cursor:pointer;" onclick="openGallery('${encodedMediaString}', ${i})">
+                            ${previewTag}
+                            ${playIcon}
                             ${overlay}
                         </div>`;
                 });
                 
                 innerContent = `<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; width: 240px; border-radius: 8px; overflow: hidden; margin-bottom: 5px;">${gridHtml}</div>`;
-            } 
+            }
             else if (isImage) {
                 innerContent = `<img src="${content}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" onclick="openGallery('${content}', 0)" />`;
             } 
@@ -2398,6 +2429,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
     // МАГИЯ: Отправить как защищенный Альбом (Группа)
     document.getElementById('send-as-album-btn').addEventListener('click', async () => {
+        // --- ТОТ САМЫЙ ФИКС ОШИБКИ ---
+        if (!currentSharedKey || !currentChatUser) {
+            alert("Сначала выберите собеседника слева!");
+            document.getElementById('album-prompt-modal').style.display = 'none';
+            pendingUploadFiles = [];
+            return;
+        }
+        // -----------------------------
+
         const btn = document.getElementById('send-as-album-btn');
         btn.textContent = "Шифрование...";
         btn.style.opacity = '0.7';
@@ -2406,17 +2446,18 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const encryptedImages = [];
             const localUrls = [];
 
-            // Шифруем каждую картинку
+            // Шифруем каждую картинку / видео
             for (let file of pendingUploadFiles) {
                 const dataBuffer = await readFileAsArrayBuffer(file);
                 const encryptedData = await encryptMessage(dataBuffer, currentSharedKey);
                 encryptedImages.push({
                     ciphertext: encryptedData.ciphertext,
                     iv: encryptedData.iv,
-                    mimeType: file.type,
+                    mimeType: file.type, // Сохраняем реальный тип (video/mp4)
                     fileName: file.name
                 });
-                localUrls.push(URL.createObjectURL(file));
+                // НОВОЕ: Сохраняем локально вместе с типом
+                localUrls.push({ url: URL.createObjectURL(file), type: file.type }); 
             }
 
             const msgId = crypto.randomUUID();
@@ -2511,7 +2552,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                         const decryptedBuffer = await decryptMessage(imgBox, currentSharedKey);
                         if (decryptedBuffer) {
                             const blob = new Blob([decryptedBuffer], { type: imgBox.mimeType });
-                            mediaUrls.push(URL.createObjectURL(blob));
+                            // Передаем и ссылку, и тип файла!
+                            mediaUrls.push({ url: url || URL.createObjectURL(blob), type: imgBox.mimeType });
                         }
                     }
                     displayMessage(mediaUrls, type, new Date(), false, '', false, false, false, payload.id, box.replyTo, true);
