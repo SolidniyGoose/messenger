@@ -690,7 +690,7 @@
                         // Текст расшифровываем обычным способом (он легкий, его можно не кэшировать)
                         const decryptedBuffer = await decryptMessage(box, currentSharedKey);
                         if (decryptedBuffer) {
-                            const text = bufferToText(decryptedBuffer);
+                            const text = escapeHTML(bufferToText(decryptedBuffer));
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
                             displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
                         }
@@ -833,7 +833,7 @@
                         // Текст расшифровываем обычным способом (он легкий, его можно не кэшировать)
                         const decryptedBuffer = await decryptMessage(box, currentSharedKey);
                         if (decryptedBuffer) {
-                            const text = bufferToText(decryptedBuffer);
+                            const text = escapeHTML(bufferToText(decryptedBuffer));
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
                             displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead);
                         }
@@ -1169,7 +1169,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const mySharedKey = await deriveSharedSecret(myPublicKeyBase64); 
             const myEncryptedGroupKeyBox = await encryptMessage(rawGroupKey, mySharedKey);
             myEncryptedGroupKeyBox.encryptedBy = myUsername; 
-            groupMembersData.push({ username: myUsername, encryptedKeyBox: JSON.stringify(myEncryptedGroupKeyBox) });
+            // ИСПРАВЛЕНИЕ: unshift ставит нас на ПЕРВОЕ МЕСТО, чтобы сервер знал, что мы - Админ!
+            groupMembersData.unshift({ username: myUsername, encryptedKeyBox: JSON.stringify(myEncryptedGroupKeyBox) });
 
             const response = await fetch('/api/groups/create', {
                 method: 'POST',
@@ -1864,7 +1865,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             } 
             else {
                 msgDiv.classList.add('text-message');
-                innerContent = escapeHTML(content);
+                innerContent = content; // <--- Убрали защиту отсюда
             }
 
             msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${timeString}${statusHtml}</span>`;
@@ -1952,7 +1953,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             });
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
-            displayMessage(text, 'my-message', new Date(), false, '', false, false, false, msgId, activeReply);
+            displayMessage(escapeHTML(text), 'my-message', new Date(), false, '', false, false, false, msgId, activeReply);
             messageInput.value = '';
             activeReply = null;
             replyBanner.style.display = 'none';
@@ -2597,11 +2598,17 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 createdAt: new Date().toISOString(),
                 isRead: false
             });
-            // МАРШРУТИЗАЦИЯ
+            // МАРШРУТИЗАЦИЯ И МГНОВЕННОЕ ОБНОВЛЕНИЕ САЙДБАРА
             if (payload.isGroup) {
-                if (payload.groupId !== currentChatUser) return; // Игнорируем, если открыт другой чат
+                if (payload.groupId !== currentChatUser) {
+                    loadActiveChats(); // Обновляем сайдбар (чтобы группа появилась!)
+                    return; // Игнорируем отрисовку самого сообщения, т.к. мы в другом окне
+                }
             } else {
-                if (payload.sender !== currentChatUser) return;
+                if (payload.sender !== currentChatUser) {
+                    loadActiveChats(); // Обновляем сайдбар
+                    return;
+                }
             }
 
             const box = payload.secretBox;
@@ -2614,7 +2621,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 const senderPrefix = payload.isGroup ? `<b style="color: var(--primary-color); font-size: 13px;">${payload.sender}:</b><br>` : '';
 
                 if (!box.type || box.type === 'TEXT') {
-                    const text = bufferToText(decryptedBuffer);
+                    const text = escapeHTML(bufferToText(decryptedBuffer));
                     const displayText = payload.isGroup ? senderPrefix + text : text;
                     displayMessage(displayText, type, new Date(), false, '', false, false, false, payload.id, box.replyTo);
                 // Внутри receive_message:
