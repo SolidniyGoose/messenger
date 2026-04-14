@@ -658,6 +658,8 @@
         loadActiveChats(); 
 
         updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮД
+        // В личном чате всегда можно писать
+        document.querySelector('.input-area-wrapper').style.display = 'block';
         
         currentSharedKey = await deriveSharedSecret(user.publicKey);
         
@@ -753,6 +755,16 @@
             // 2. Читаем "подпись": кто именно зашифровал для нас этот ключ?
             const creatorUsername = encryptedKeyBox.encryptedBy;
             
+            // --- 🛡️ ЛОГИКА READ-ONLY ДЛЯ КАНАЛОВ ---
+            const inputArea = document.querySelector('.input-area-wrapper');
+            // Если это канал, и мы НЕ его создатель -> прячем строку ввода!
+            if (fullGroup.isChannel && creatorUsername !== myUsername) {
+                inputArea.style.display = 'none';
+            } else {
+                // Если это обычная группа или мы создатель канала -> показываем!
+                inputArea.style.display = 'block';
+            }
+            // ------------
             if (!creatorUsername) {
                 // Если мы пытаемся открыть группу, созданную ДО этого исправления
                 throw new Error("Эта группа имеет старый формат. Пожалуйста, создайте новую группу для тестов!");
@@ -919,7 +931,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const sidebar = document.querySelector('.sidebar');
             document.querySelectorAll('.sidebar .chat-mock').forEach(el => el.remove()); 
             
-            // --- РЕНДЕРИМ ГРУППЫ ---
+            // --- РЕНДЕРИМ ГРУППЫ И КАНАЛЫ ---
             myGroups.forEach(group => {
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
@@ -929,18 +941,22 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     chatItem.style.color = 'var(--text-main)';
                 }
                 
-                // Проверяем, есть ли у группы своя аватарка
+                // Рисуем аватарку ИЛИ иконку (Рупор для канала, Люди для группы)
                 const avatarHtml = group.avatar 
                     ? `<img src="${group.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`
-                    : '👥';
+                    : (group.isChannel ? '📢' : '👥');
                 
-                // Собираем HTML для группы (без многоточий)
                 const safeGroupName = escapeHTML(group.name);
+                const typeText = group.isChannel ? 'Канал' : 'Группа';
+
+                // ВОТ ЗДЕСЬ МЫ ИСПРАВИЛИ БАГ С ТЕКСТОМ:
                 chatItem.innerHTML = `
-                    // ... (тут аватарка)
+                    <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                        ${avatarHtml}
+                    </div>
                     <div class="chat-info">
                         <div style="font-weight: 600; font-size: 15px;">${safeGroupName}</div>
-                        <div style="font-size: 13px; opacity: 0.9;">Группа (${group._count.members} уч.)</div>
+                        <div style="font-size: 13px; opacity: 0.9;">${typeText} (${group._count.members} уч.)</div>
                     </div>
                 `;
                 
@@ -1105,7 +1121,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         
         groupNameInput.style.display = 'block';
         groupNameInput.value = ''; 
-        channelPublicCheckbox.checked = false; // Сбрасываем галочку по умолчанию
+        channelPublicCheckbox.checked = false; 
         confirmGroupBtn.style.display = 'block';
         
         try {
@@ -1117,7 +1133,6 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }
     }
 
-    // 3. Обработчики кнопок выбора
     document.getElementById('choice-group-btn').addEventListener('click', () => openCreationModal(false));
     document.getElementById('choice-channel-btn').addEventListener('click', () => openCreationModal(true));
 
@@ -1127,7 +1142,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         isCreatingChannel = false;
     });
 
-    // --- МАГИЯ: ПОДТВЕРЖДЕНИЕ СОЗДАНИЯ (ГРУППЫ ИЛИ КАНАЛА) ---
+    // --- МАГИЯ: ПОДТВЕРЖДЕНИЕ СОЗДАНИЯ ---
     confirmGroupBtn.addEventListener('click', async () => {
         const groupName = groupNameInput.value.trim();
         if (!groupName) return alert(isCreatingChannel ? "Введите название канала!" : "Введите название группы!");
@@ -1156,15 +1171,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             myEncryptedGroupKeyBox.encryptedBy = myUsername; 
             groupMembersData.push({ username: myUsername, encryptedKeyBox: JSON.stringify(myEncryptedGroupKeyBox) });
 
-            // Отправляем данные на сервер (добавили флаги isChannel и isPublic)
             const response = await fetch('/api/groups/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     groupName: groupName,
                     members: groupMembersData,
-                    isChannel: isCreatingChannel, // Сервер будет знать, что это канал!
-                    isPublic: isPublicChannel     // Сервер будет знать, нужно ли выдавать его в поиске
+                    isChannel: isCreatingChannel,
+                    isPublic: isPublicChannel
                 })
             });
 
@@ -1175,100 +1189,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 groupNameInput.value = '';
                 isCreatingGroup = false;
                 isCreatingChannel = false;
-                loadActiveChats(); // Мгновенно обновляем сайдбар!
+                loadActiveChats(); 
             } else {
                 alert("Ошибка сервера при сохранении.");
             }
         } catch (error) {
             console.error("Ошибка:", error);
-            alert("Произошла ошибка при генерации ключей.");
         } finally {
             confirmGroupBtn.textContent = isCreatingChannel ? "Создать канал" : "Создать группу";
-            confirmGroupBtn.style.opacity = '1';
-        }
-    });
-
-    document.getElementById('close-contacts-btn').addEventListener('click', () => {
-        document.getElementById('contacts-modal').style.display = 'none';
-        isCreatingGroup = false; // Сбрасываем флаг при закрытии
-    });
-
-    // --- МАГИЯ: ПОДТВЕРЖДЕНИЕ СОЗДАНИЯ ГРУППЫ ---
-    confirmGroupBtn.addEventListener('click', async () => {
-        const groupName = groupNameInput.value.trim();
-        if (!groupName) return alert("Введите название группы!");
-        if (selectedForGroup.size === 0) return alert("Выберите хотя бы одного участника!");
-
-        confirmGroupBtn.textContent = "Шифруем ключи...";
-        confirmGroupBtn.style.opacity = '0.7';
-
-        try {
-            const groupKey = await window.crypto.subtle.generateKey(
-                { name: "AES-GCM", length: 256 },
-                true, 
-                ["encrypt", "decrypt"]
-            );
-            
-            const rawGroupKey = await window.crypto.subtle.exportKey("raw", groupKey);
-            const groupMembersData = [];
-
-            // 2. РАЗДАЕМ КЛЮЧ
-            for (const username of selectedForGroup) {
-                const userObj = allAvailableContacts.find(u => u.username === username);
-                const sharedKeyForUser = await deriveSharedSecret(userObj.publicKey);
-                
-                const encryptedGroupKeyBox = await encryptMessage(rawGroupKey, sharedKeyForUser);
-                // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Оставляем "подпись", кто зашифровал ключ!
-                encryptedGroupKeyBox.encryptedBy = myUsername; 
-                
-                groupMembersData.push({
-                    username: username,
-                    encryptedKeyBox: JSON.stringify(encryptedGroupKeyBox)
-                });
-            }
-
-            // 3. Шифруем для себя
-            const mySharedKey = await deriveSharedSecret(myPublicKeyBase64); 
-            const myEncryptedGroupKeyBox = await encryptMessage(rawGroupKey, mySharedKey);
-            
-            // И для себя тоже оставляем подпись
-            myEncryptedGroupKeyBox.encryptedBy = myUsername; 
-            
-            groupMembersData.push({
-                username: myUsername,
-                encryptedKeyBox: JSON.stringify(myEncryptedGroupKeyBox)
-            });
-
-// 4. Отправляем зашифрованные данные на наш новый серверный эндпоинт
-            const response = await fetch('/api/groups/create', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    groupName: groupName,
-                    members: groupMembersData
-                })
-            });
-
-            const data = await response.json();
-            
-            if (data.success) {
-                // alert(`Группа "${groupName}" успешно создана!`);
-                document.getElementById('contacts-modal').style.display = 'none';
-                
-                // Сбрасываем форму
-                groupNameInput.value = '';
-                isCreatingGroup = false;
-                
-                // TODO: Здесь мы позже вызовем функцию обновления сайдбара, 
-                // чтобы группа появилась в списке слева.
-            } else {
-                alert("Ошибка сервера при сохранении группы.");
-            }
-        } catch (error) {
-            console.error("Ошибка при создании группы:", error);
-            alert("Произошла ошибка при генерации ключей.");
-        } finally {
-            confirmGroupBtn.textContent = "Создать группу";
             confirmGroupBtn.style.opacity = '1';
         }
     });
