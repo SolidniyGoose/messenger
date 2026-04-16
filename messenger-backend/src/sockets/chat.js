@@ -53,16 +53,19 @@ module.exports = (io) => {
 
                     if (!group) return;
 
-                    // --- 🛡️ ЗАЩИТА КАНАЛА ---
+                    // --- 🛡️ ЗАЩИТА КАНАЛА (ИСПРАВЛЕННАЯ) ---
                     if (group.isChannel) {
-                        // В канале может писать только тот, кто его создал 
-                        // (В нашей системе создатель — это тот, кто зашифровал ключ для остальных)
-                        // Для простоты проверим, является ли отправитель первым участником (админом)
-                        // В будущем можно добавить поле "role" в GroupMember
-                        const admin = group.members[0].username; 
-                        if (payload.sender !== admin) {
-                            console.warn(`Попытка записи в канал от ${payload.sender} заблокирована!`);
-                            return; // Просто сбрасываем сообщение
+                        // Ищем сейф отправителя, чтобы прочитать его крипто-подпись
+                        const mySafe = group.members.find(m => m.username === payload.sender);
+                        if (mySafe) {
+                            // Prisma может вернуть JSON как объект или строку
+                            const safeData = typeof mySafe.encryptedKeyBox === 'string' ? JSON.parse(mySafe.encryptedKeyBox) : mySafe.encryptedKeyBox;
+                            const admin = safeData.encryptedBy; // Тот, кто зашифровал ключи - тот и Создатель
+                            
+                            if (payload.sender !== admin) {
+                                console.warn(`Блокировка: ${payload.sender} не является админом канала!`);
+                                return; // Сервер отклоняет сообщение
+                            }
                         }
                     }
 

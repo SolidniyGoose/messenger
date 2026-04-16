@@ -529,6 +529,15 @@
         }
     }
 
+    // Помощник: Локальное удаление сообщений ("Удалить у себя")
+    function markAsDeletedLocally(msgId) {
+        const deleted = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
+        if (!deleted.includes(msgId)) {
+            deleted.push(msgId);
+            localStorage.setItem('deletedMessages', JSON.stringify(deleted));
+        }
+    }
+
     // Сборщик мусора (Запускается каждую минуту и удаляет старье)
     setInterval(() => {
         const now = Date.now();
@@ -699,8 +708,8 @@
                         const mediaUrls = [];
                         for (let imgBox of box.images) {
                             const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
-                            if (url) // Передаем и ссылку, и тип файла!
-                                mediaUrls.push({ url: url || URL.createObjectURL(blob), type: imgBox.mimeType });
+                            if (url) // ИСПРАВЛЕНО: Передаем только правильный url
+                                mediaUrls.push({ url: url, type: imgBox.mimeType }); 
                         }
                         displayMessage(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
                     } else {
@@ -842,8 +851,8 @@
                         const mediaUrls = [];
                         for (let imgBox of box.images) {
                             const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
-                            if (url) // Передаем и ссылку, и тип файла!
-                                mediaUrls.push({ url: url || URL.createObjectURL(blob), type: imgBox.mimeType });
+                            if (url) // ИСПРАВЛЕНО: Передаем только правильный url
+                                mediaUrls.push({ url: url, type: imgBox.mimeType }); 
                         }
                         displayMessage(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
                     } else {
@@ -1998,9 +2007,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 msgEl.style.opacity = '0';
                 setTimeout(() => msgEl.remove(), 300);
             }
-            // --- НОВОЕ: ВЫЧИЩАЕМ ИЗ КЭША ---
+            // --- ИСПРАВЛЕНО: Очищаем кэш по правильной переменной ---
             APP_CACHE.history.forEach((historyArray, key) => {
-                APP_CACHE.history.set(key, historyArray.filter(msg => msg.id !== msgId));
+                APP_CACHE.history.set(key, historyArray.filter(msg => msg.id !== selectedMessageId));
             });
             closeMsgMenu();
         }
@@ -2631,8 +2640,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                         const decryptedBuffer = await decryptMessage(imgBox, currentSharedKey);
                         if (decryptedBuffer) {
                             const blob = new Blob([decryptedBuffer], { type: imgBox.mimeType });
-                            // Передаем и ссылку, и тип файла!
-                            mediaUrls.push({ url: url || URL.createObjectURL(blob), type: imgBox.mimeType });
+                            const newUrl = URL.createObjectURL(blob); // ИСПРАВЛЕНО
+                            mediaUrls.push({ url: newUrl, type: imgBox.mimeType });
                         }
                     }
                     displayMessage(mediaUrls, type, new Date(), false, '', false, false, false, payload.id, box.replyTo, true);
