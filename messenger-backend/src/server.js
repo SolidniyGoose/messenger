@@ -15,24 +15,6 @@ app.use(express.json({ limit: '50mb' }));
 const usersRoutes = require('./routes/users');
 app.use('/api/users', usersRoutes);
 
-// --- ИСТОРИЯ ЧАТОВ (То, что мы забыли добавить) ---
-app.get('/api/history/:user1/:user2', async (req, res) => {
-    const { user1, user2 } = req.params;
-    try {
-        const messages = await prisma.message.findMany({
-            where: {
-                OR: [
-                    { sender: user1, recipient: user2 },
-                    { sender: user2, recipient: user1 }
-                ]
-            },
-            orderBy: { createdAt: 'asc' } 
-        });
-        res.json(messages);
-    } catch (error) {
-        res.status(500).json({ error: "Ошибка загрузки истории" });
-    }
-});
 // --- ЭНДПОИНТ ДЛЯ ИСТОРИИ ГРУППОВОГО ЧАТА ---
 app.get('/api/history/group/:groupId', async (req, res) => {
     const { groupId } = req.params;
@@ -49,6 +31,25 @@ app.get('/api/history/group/:groupId', async (req, res) => {
     } catch (error) { 
         console.error("❌ [API ИСТОРИЯ] КРИТИЧЕСКАЯ ОШИБКА PRISMA:", error); // <--- СЛЕЖКА
         res.status(500).json([]); 
+    }
+});
+
+// --- ИСТОРИЯ ЧАТОВ (То, что мы забыли добавить) ---
+app.get('/api/history/:user1/:user2', async (req, res) => {
+    const { user1, user2 } = req.params;
+    try {
+        const messages = await prisma.message.findMany({
+            where: {
+                OR: [
+                    { sender: user1, recipient: user2 },
+                    { sender: user2, recipient: user1 }
+                ]
+            },
+            orderBy: { createdAt: 'asc' } 
+        });
+        res.json(messages);
+    } catch (error) {
+        res.status(500).json({ error: "Ошибка загрузки истории" });
     }
 });
 
