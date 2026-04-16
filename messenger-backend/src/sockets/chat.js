@@ -53,14 +53,18 @@ module.exports = (io) => {
                     }
 
                     // ВАЖНО: Сохраняем в базу с указанием groupId
-                    await prisma.message.create({
+                    console.log(`[SOCKET] Пытаемся сохранить сообщение в БД для группы: ${payload.groupId}`); // <--- СЛЕЖКА
+                    
+                    const savedMsg = await prisma.message.create({
                         data: {
                             id: payload.id,
                             sender: payload.sender,
-                            groupId: payload.groupId, // <-- Без этого история будет пустой
+                            groupId: payload.groupId,
                             secretBox: payload.secretBox
                         }
                     });
+                    
+                    console.log(`[SOCKET] ✅ Сообщение успешно записано в БД! ID: ${savedMsg.id}`); // <--- СЛЕЖКА
 
                     // Рассылка участникам
                     group.members.forEach(member => {

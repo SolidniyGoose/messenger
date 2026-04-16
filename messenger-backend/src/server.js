@@ -36,13 +36,20 @@ app.get('/api/history/:user1/:user2', async (req, res) => {
 // --- ЭНДПОИНТ ДЛЯ ИСТОРИИ ГРУППОВОГО ЧАТА ---
 app.get('/api/history/group/:groupId', async (req, res) => {
     const { groupId } = req.params;
+    console.log(`[API ИСТОРИЯ] Запрошена история для группы: ${groupId}`); // <--- СЛЕЖКА
+    
     try {
         const messages = await prisma.message.findMany({
-            where: { groupId: groupId }, // Должно совпадать с полем в БД
+            where: { groupId: groupId },
             orderBy: { createdAt: 'asc' }
         });
+        
+        console.log(`[API ИСТОРИЯ] Успех! Найдено сообщений в базе: ${messages.length}`); // <--- СЛЕЖКА
         res.json(messages);
-    } catch (error) { res.status(500).json([]); }
+    } catch (error) { 
+        console.error("❌ [API ИСТОРИЯ] КРИТИЧЕСКАЯ ОШИБКА PRISMA:", error); // <--- СЛЕЖКА
+        res.status(500).json([]); 
+    }
 });
 
 // --- ОБНОВЛЕННЫЙ ЭНДПОИНТ СОЗДАНИЯ ---
