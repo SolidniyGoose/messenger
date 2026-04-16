@@ -179,7 +179,14 @@
             <span class="chat-name">Глобальный чат</span>
             <span class="chat-status">онлайн</span>
         </div>
-        <button id="group-settings-btn" style="display: none; background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; margin-left: auto; padding: 5px 10px;">⋮</button>
+        <button id="channel-discussion-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; margin-left: auto; padding: 5px 10px;" title="Все комментарии">💬</button>
+        
+        <button id="group-settings-btn" style="display: none; background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; margin-left: 5px; padding: 5px 10px;">⋮</button>
+    </div>
+    
+    <div id="thread-banner" style="display: none; background: var(--input-bg); padding: 10px 15px; border-bottom: 1px solid var(--border-color); align-items: center; gap: 15px; font-size: 14px; font-weight: 500; z-index: 4;">
+        <button id="close-thread-btn" style="background: var(--gradient-primary); color: white; border: none; padding: 5px 12px; border-radius: 12px; cursor: pointer; font-size: 13px;">← В канал</button>
+        <span id="thread-title" style="color: var(--text-main);">Комментарии</span>
     </div>
 
     <div class="messages" id="messages-list"></div>
@@ -500,6 +507,10 @@
     let currentChatUser = null;  // <--- Имя текущего собеседника
     let currentChatIsGroup = false;
 
+    let currentGroupData = null; // Хранит полные данные о текущей группе
+    let currentChannelView = 'main'; // Режимы: 'main' (канал), 'discussion' (все комменты), 'thread' (комменты к посту)
+    let currentThreadPostId = null;  // ID поста, под которым мы сейчас сидим
+
     // --- 🛡️ АНТИ-XSS ЗАЩИТА (САНИТАЙЗЕР) ---
     function escapeHTML(str) {
         if (!str) return '';
@@ -734,6 +745,138 @@
         updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮДА
     }
 
+    // --- ТЕЛЕГРАМ-ФИЛЬТРАЦИЯ И ОТРИСОВКА ---
+    async function redrawGroupChat() {
+        const messagesList = document.getElementById('messages-list');
+        messagesList.innerHTML = ''; 
+        
+        const cacheKey = `group_${currentChatUser}`;
+        if (!APP_CACHE.history.has(cacheKey)) return;
+        const history = APP_CACHE.history.get(cacheKey);
+        const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
+
+        // Обновляем шапку и поле ввода
+        document.getElementById('channel-discussion-btn').style.display = (currentGroupData && currentGroupData.isChannel) ? 'block' : 'none';
+        const inputArea = document.querySelector('.input-area-wrapper');
+        
+        if (currentGroupData && currentGroupData.isChannel) {
+            const myMemberRecord = currentGroupData.members.find(m => m.username === myUsername);
+            const admin = JSON.parse(myMemberRecord.encryptedKeyBox).encryptedBy;
+            
+            // Если мы в главном канале и не админ - прячем ввод. Иначе (в комментах) - разрешаем писать!
+            if (currentChannelView === 'main' && admin !== myUsername) {
+                inputArea.style.display = 'none';
+            } else {
+                inputArea.style.display = 'block';
+            }
+        }
+
+        for (let msg of history) {
+            if (deletedLocally.includes(msg.id)) continue;
+
+            try {
+                const box = typeof msg.secretBox === 'string' ? JSON.parse(msg.secretBox) : msg.secretBox;
+                
+                // === 🛡️ ЛОГИКА ТЕЛЕГРАМ-КАНАЛА ===
+                if (currentGroupData && currentGroupData.isChannel) {
+                    const isComment = box.isComment === true;
+
+                    if (currentChannelView === 'main') {
+                        if (isComment) continue; // В канале скрываем все комменты
+                    } else if (currentChannelView === 'discussion') {
+                        if (!isComment) continue; // В общей ленте скрываем посты
+                    } else if (currentChannelView === 'thread') {
+                        const isOriginalPost = msg.id === currentThreadPostId;
+                        const isRelevantComment = isComment && box.replyTo === currentThreadPostId;
+                        // В ветке поста показываем ТОЛЬКО сам пост и комменты ИМЕННО к нему
+                        if (!isOriginalPost && !isRelevantComment) continue;
+                    }
+                }
+
+                // --- СТАНДАРТНАЯ РАСШИФРОВКА ---
+                const type = msg.sender === myUsername ? 'my-message' : 'other-message';
+                const senderPrefix = (type === 'other-message') ? `<b>${escapeHTML(msg.sender)}:</b><br>` : '';
+                
+                // Функция-обертка, чтобы добавить кнопку "Комментарии"
+                const renderWithCommentBtn = (contentHtml, type, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum) => {
+                    displayMessage(contentHtml, type, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum);
+                    
+                    // Если мы в режиме канала и это пост - приклеиваем под него кнопку
+                    if (currentGroupData && currentGroupData.isChannel && currentChannelView === 'main' && !box.isComment) {
+                        // Считаем количество комментов к этому посту
+                        const commentCount = history.filter(m => (typeof m.secretBox === 'string' ? JSON.parse(m.secretBox) : m.secretBox).replyTo === msg.id && (typeof m.secretBox === 'string' ? JSON.parse(m.secretBox) : m.secretBox).isComment).length;
+                        
+                        const msgDiv = document.getElementById(`msg-${msgId}`);
+                        if (msgDiv) {
+                            const btnHtml = document.createElement('div');
+                            btnHtml.innerHTML = `💬 Комментарии <span style="background: var(--primary-color); color: white; padding: 2px 6px; border-radius: 10px; font-size: 10px; margin-left: 5px;">${commentCount}</span>`;
+                            btnHtml.style.cssText = "margin-top: 8px; font-size: 13px; color: var(--text-main); cursor: pointer; display: inline-flex; align-items: center; background: rgba(0,0,0,0.05); padding: 5px 12px; border-radius: 14px; font-weight: 500; transition: 0.2s;";
+                            btnHtml.onmouseover = () => btnHtml.style.background = 'rgba(0,0,0,0.1)';
+                            btnHtml.onmouseout = () => btnHtml.style.background = 'rgba(0,0,0,0.05)';
+                            btnHtml.onclick = () => window.openThread(msgId);
+                            msgDiv.appendChild(btnHtml);
+                        }
+                    }
+                };
+
+                if (!box.type || box.type === 'TEXT') {
+                    const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                    if (decryptedBuffer) {
+                        const text = escapeHTML(bufferToText(decryptedBuffer));
+                        const displayText = type === 'other-message' ? senderPrefix + text : text;
+                        renderWithCommentBtn(displayText, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
+                    }
+                } else if (box.type === 'ALBUM') {
+                    const mediaUrls = [];
+                    for (let imgBox of box.images) {
+                        const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
+                        if (url) mediaUrls.push({ url: url, type: imgBox.mimeType }); 
+                    }
+                    renderWithCommentBtn(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
+                } else {
+                    const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
+                    if (mediaUrl) {
+                        if (box.type === 'AUDIO') {
+                            renderWithCommentBtn(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo); 
+                        } else if (box.type === 'VIDEO_CIRCLE') {
+                            renderWithCommentBtn(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo); 
+                        } else {
+                            renderWithCommentBtn(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
+                        }
+                    }
+                }
+            } catch(e) { console.error("Ошибка отрисовки:", e); }
+        }
+        messagesList.scrollTop = messagesList.scrollHeight;
+    }
+
+    // ГЛОБАЛЬНЫЕ ФУНКЦИИ УПРАВЛЕНИЯ РЕЖИМАМИ
+    window.openThread = (postId) => {
+        currentChannelView = 'thread';
+        currentThreadPostId = postId;
+        document.getElementById('thread-banner').style.display = 'flex';
+        redrawGroupChat();
+    };
+
+    document.getElementById('close-thread-btn').addEventListener('click', () => {
+        currentChannelView = 'main';
+        currentThreadPostId = null;
+        document.getElementById('thread-banner').style.display = 'none';
+        redrawGroupChat();
+    });
+
+    document.getElementById('channel-discussion-btn').addEventListener('click', () => {
+        if (currentChannelView === 'main') {
+            currentChannelView = 'discussion';
+            document.getElementById('thread-banner').style.display = 'flex';
+            document.getElementById('thread-title').textContent = "Все комментарии канала";
+        } else {
+            currentChannelView = 'main';
+            document.getElementById('thread-banner').style.display = 'none';
+        }
+        redrawGroupChat();
+    });
+
     // --- 1.2 ФУНКЦИЯ: ОТКРЫТЬ ГРУППОВОЙ ЧАТ ---
     // --- 1.2 ФУНКЦИЯ: ОТКРЫТЬ ГРУППОВОЙ ЧАТ ---
     async function openGroupChat(group) {
@@ -743,7 +886,7 @@
     document.getElementById('backdrop').classList.remove('show');
     if (window.innerWidth <= 768) document.body.classList.add('mobile-chat-active');
 
-    // Предварительная настройка шапки (из легких данных)
+    // Предварительная настройка шапки
     document.querySelector('.chat-name').textContent = group.name;
     document.querySelector('.chat-status').textContent = `Участников: ${group._count ? group._count.members : group.members.length}`;
     
@@ -768,13 +911,20 @@
             throw new Error("Эта группа имеет старый формат. Пожалуйста, создайте новую группу или канал!");
         }
 
-        // --- 🛡️ ШАГ 3: ЛОГИКА READ-ONLY ДЛЯ КАНАЛОВ ---
+        // --- 🛡️ ИНИЦИАЛИЗАЦИЯ СОСТОЯНИЯ КАНАЛА ---
+        currentGroupData = fullGroup;
+        currentChannelView = 'main'; // Всегда открываем главный канал
+        currentThreadPostId = null;
+
+        // Сбрасываем UI баннеров и кнопок обсуждения
+        document.getElementById('thread-banner').style.display = 'none';
+        document.getElementById('channel-discussion-btn').style.display = fullGroup.isChannel ? 'block' : 'none';
+
+        // Логика Read-Only для обычных участников канала
         const inputArea = document.querySelector('.input-area-wrapper');
-        // Если это канал, и мы НЕ его создатель -> прячем строку ввода!
         if (fullGroup.isChannel && creatorUsername !== myUsername) {
             inputArea.style.display = 'none';
         } else {
-            // Если это обычная группа или мы создатель канала -> показываем!
             inputArea.style.display = 'block';
         }
 
@@ -790,7 +940,6 @@
             creatorPublicKeyBase64 = creatorObj.publicKey;
         }
 
-        // Создаем мост с создателем для расшифровки ключа группы
         const creatorSharedKey = await deriveSharedSecret(creatorPublicKeyBase64);
         const rawGroupKeyBuffer = await decryptMessage(encryptedKeyBox, creatorSharedKey);
         
@@ -798,7 +947,6 @@
             throw new Error("Не удалось расшифровать ключ группы. Ключи не совпадают.");
         }
 
-        // Импортируем общий ключ чата (AES-GCM)
         currentSharedKey = await window.crypto.subtle.importKey(
             "raw",
             rawGroupKeyBuffer,
@@ -809,66 +957,17 @@
 
         console.log("🔓 Ключ группы успешно расшифрован!");
         
-        // --- 5. ЗАГРУЗКА ИСТОРИИ ---
-        document.getElementById('messages-list').innerHTML = ''; 
-        
+        // --- 5. ЗАГРУЗКА ИСТОРИИ В КЭШ ---
         const cacheKey = `group_${group.id}`;
-        let history;
-        if (APP_CACHE.history.has(cacheKey)) {
-            history = APP_CACHE.history.get(cacheKey);
-        } else {
+        if (!APP_CACHE.history.has(cacheKey)) {
             const histRes = await fetch(`/api/history/group/${group.id}`);
-            history = await histRes.json();
+            const history = await histRes.json();
             APP_CACHE.history.set(cacheKey, history);
         }
 
-        const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
-        
-        // --- 6. ЦИКЛ ОТРИСОВКИ СООБЩЕНИЙ ---
-        for (let msg of history) {
-            if (deletedLocally.includes(msg.id)) continue;
-
-            try {
-                const box = msg.secretBox;
-                const type = msg.sender === myUsername ? 'my-message' : 'other-message';
-                const senderPrefix = (type === 'other-message') ? `<b>${escapeHTML(msg.sender)}:</b><br>` : '';
-                
-                if (!box.type || box.type === 'TEXT') {
-                    const decryptedBuffer = await decryptMessage(box, currentSharedKey);
-                    if (decryptedBuffer) {
-                        const text = escapeHTML(bufferToText(decryptedBuffer));
-                        const displayText = type === 'other-message' ? senderPrefix + text : text;
-                        // Передаем ID сообщения и данные ответа для контекстного меню
-                        displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
-                    }
-                } else if (box.type === 'ALBUM') {
-                    const mediaUrls = [];
-                    for (let imgBox of box.images) {
-                        const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
-                        if (url) mediaUrls.push({ url: url, type: imgBox.mimeType }); 
-                    }
-                    displayMessage(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
-                } else {
-                    // Тяжелые файлы (аудио, видео, фото, файлы)
-                    const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
-                    if (mediaUrl) {
-                        if (box.type === 'AUDIO') {
-                            displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo); 
-                        } else if (box.type === 'VIDEO_CIRCLE') {
-                            displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo); 
-                        } else {
-                            displayMessage(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
-                        }
-                    }
-                }
-            } catch(e) { 
-                console.error("Ошибка отрисовки сообщения в истории:", e); 
-            }
-        }
-        
-        // Прокрутка вниз
-        const messagesList = document.getElementById('messages-list');
-        messagesList.scrollTop = messagesList.scrollHeight;
+        // --- 6. ЗАПУСК ОТРИСОВКИ ЧЕРЕЗ ФИЛЬТРЫ ---
+        // Эта функция сама очистит список и отрисует только то, что нужно (посты или комменты)
+        await redrawGroupChat();
 
     } catch (error) {
         console.error("Ошибка при входе в группу:", error);
@@ -1942,7 +2041,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 secretBox: { 
                     ...encryptedData, 
                     type: 'TEXT',
-                    replyTo: activeReply // Прикрепляем данные ответа, если они есть
+                    replyTo: currentChannelView === 'thread' ? currentThreadPostId : activeReply, // Авто-ответ в ветке!
+                    isComment: currentGroupData?.isChannel && currentChannelView !== 'main' // Флаг комментария
                 }
             };
             // --- НОВОЕ: СОХРАНЯЕМ В ЛОКАЛЬНУЮ ИСТОРИЮ ---
@@ -1951,7 +2051,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 sender: myUsername,
                 secretBox: payload.secretBox,
                 createdAt: new Date().toISOString(),
-                isRead: false
+                isRead: false,
             });
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
@@ -2069,7 +2169,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     type: isImage ? 'IMAGE' : 'FILE',
                     fileName: file.name,
                     mimeType: file.type,
-                    replyTo: activeReply // Прикрепляем ответ
+                    replyTo: currentChannelView === 'thread' ? currentThreadPostId : activeReply, // Авто-ответ в ветке!
+                    isComment: currentGroupData?.isChannel && currentChannelView !== 'main' // Флаг комментария
                 }
             };
 
@@ -2079,7 +2180,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 sender: myUsername,
                 secretBox: payload.secretBox,
                 createdAt: new Date().toISOString(),
-                isRead: false
+                isRead: false,
             });
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
@@ -2201,7 +2302,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                         ...encryptedData, 
                         type: 'VIDEO_CIRCLE',
                         mimeType: safeMimeType,
-                        replyTo: activeReply // <--- ИСПРАВЛЕНА ОШИБКА
+                        replyTo: currentChannelView === 'thread' ? currentThreadPostId : activeReply, // Авто-ответ в ветке!
+                        isComment: currentGroupData?.isChannel && currentChannelView !== 'main' // Флаг комментария
                     }
                 };
 
@@ -2211,7 +2313,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     sender: myUsername,
                     secretBox: payload.secretBox,
                     createdAt: new Date().toISOString(),
-                    isRead: false
+                    isRead: false,
                 });
 
                 socket.emit('send_message', { text: JSON.stringify(payload) });
@@ -2400,7 +2502,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                             ...encryptedData, 
                             type: 'AUDIO',
                             mimeType: 'audio/webm',
-                            replyTo: activeReply
+                            replyTo: currentChannelView === 'thread' ? currentThreadPostId : activeReply, // Авто-ответ в ветке!
+                            isComment: currentGroupData?.isChannel && currentChannelView !== 'main' // Флаг комментария
                         }
                     };
                     
@@ -2409,7 +2512,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                         sender: myUsername,
                         secretBox: payload.secretBox,
                         createdAt: new Date().toISOString(),
-                        isRead: false
+                        isRead: false,
+                        
                     });
 
                     socket.emit('send_message', { text: JSON.stringify(payload) });
@@ -2521,7 +2625,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 recipient: currentChatIsGroup ? null : currentChatUser,
                 groupId: currentChatIsGroup ? currentChatUser : null,
                 isGroup: currentChatIsGroup,
-                secretBox: { type: 'ALBUM', images: encryptedImages, replyTo: activeReply }
+                secretBox: { type: 'ALBUM', images: encryptedImages, replyTo: currentChannelView === 'thread' ? currentThreadPostId : activeReply, isComment: currentGroupData?.isChannel && currentChannelView !== 'main' }
             };
 
             appendToHistoryCache(currentChatIsGroup, currentChatUser, {

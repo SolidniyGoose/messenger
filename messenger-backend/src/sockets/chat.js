@@ -40,13 +40,19 @@ module.exports = (io) => {
 
                     if (!group) return;
 
-                    // Проверка прав для каналов
+                    // --- 🛡️ ЗАЩИТА КАНАЛА ---
                     if (group.isChannel) {
+                        // Читаем, является ли сообщение комментарием
+                        const isComment = payload.secretBox && payload.secretBox.isComment === true;
+
                         const mySafe = group.members.find(m => m.username === payload.sender);
                         if (mySafe) {
                             const safeData = typeof mySafe.encryptedKeyBox === 'string' ? JSON.parse(mySafe.encryptedKeyBox) : mySafe.encryptedKeyBox;
-                            if (payload.sender !== safeData.encryptedBy) {
-                                console.warn(`Блокировка: ${payload.sender} не админ канала!`);
+                            const admin = safeData.encryptedBy; 
+                            
+                            // Блокируем, только если это НЕ админ И это НЕ комментарий
+                            if (payload.sender !== admin && !isComment) {
+                                console.warn(`Блокировка: ${payload.sender} не админ, и это не коммент!`);
                                 return; 
                             }
                         }
