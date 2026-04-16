@@ -737,151 +737,144 @@
     // --- 1.2 ФУНКЦИЯ: ОТКРЫТЬ ГРУППОВОЙ ЧАТ ---
     // --- 1.2 ФУНКЦИЯ: ОТКРЫТЬ ГРУППОВОЙ ЧАТ ---
     async function openGroupChat(group) {
-        document.getElementById('contacts-modal').style.display = 'none';
-        document.getElementById('drawer').classList.remove('open');
-        document.getElementById('backdrop').classList.remove('show');
-        if (window.innerWidth <= 768) document.body.classList.add('mobile-chat-active');
+    // 1. Сбрасываем UI и переключаемся на экран чата
+    document.getElementById('contacts-modal').style.display = 'none';
+    document.getElementById('drawer').classList.remove('open');
+    document.getElementById('backdrop').classList.remove('show');
+    if (window.innerWidth <= 768) document.body.classList.add('mobile-chat-active');
 
-        document.querySelector('.chat-name').textContent = group.name;
-        // Берем число из нашей новой переменной _count
-        document.querySelector('.chat-status').textContent = `Участников: ${group._count.members}`;
+    // Предварительная настройка шапки (из легких данных)
+    document.querySelector('.chat-name').textContent = group.name;
+    document.querySelector('.chat-status').textContent = `Участников: ${group._count ? group._count.members : group.members.length}`;
+    
+    currentChatUser = group.id; 
+    currentChatIsGroup = true;  
+    loadActiveChats(); 
+    updateHeaderButtons();
+
+    try {
+        // --- 2. ЗАГРУЗКА ПОЛНЫХ ДАННЫХ ГРУППЫ ---
+        const fullGroupRes = await fetch(`/api/groups/${group.id}`);
+        const fullGroup = await fullGroupRes.json();
+
+        // Ищем наш личный зашифрованный сейф с ключом группы
+        const myMemberRecord = fullGroup.members.find(m => m.username === myUsername);
+        if (!myMemberRecord) throw new Error("Вы не являетесь участником этой группы.");
         
-        currentChatUser = group.id; 
-        currentChatIsGroup = true;  
-        loadActiveChats(); 
+        const encryptedKeyBox = JSON.parse(myMemberRecord.encryptedKeyBox);
+        const creatorUsername = encryptedKeyBox.encryptedBy;
+        
+        if (!creatorUsername) {
+            throw new Error("Эта группа имеет старый формат. Пожалуйста, создайте новую группу или канал!");
+        }
 
-        updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮД
+        // --- 🛡️ ШАГ 3: ЛОГИКА READ-ONLY ДЛЯ КАНАЛОВ ---
+        const inputArea = document.querySelector('.input-area-wrapper');
+        // Если это канал, и мы НЕ его создатель -> прячем строку ввода!
+        if (fullGroup.isChannel && creatorUsername !== myUsername) {
+            inputArea.style.display = 'none';
+        } else {
+            // Если это обычная группа или мы создатель канала -> показываем!
+            inputArea.style.display = 'block';
+        }
 
-        try {
-            // --- НОВОЕ: Скачиваем полные данные группы вместе с ключами ---
-            const fullGroupRes = await fetch(`/api/groups/${group.id}`);
-            const fullGroup = await fullGroupRes.json();
+        // --- 4. ПОЛУЧЕНИЕ КЛЮЧЕЙ И РАСШИФРОВКА "СЕЙФА" ---
+        let creatorPublicKeyBase64;
+        if (creatorUsername === myUsername) {
+            creatorPublicKeyBase64 = myPublicKeyBase64;
+        } else {
+            const usersRes = await fetch('/api/users');
+            const allUsers = await usersRes.json();
+            const creatorObj = allUsers.find(u => u.username === creatorUsername);
+            if (!creatorObj) throw new Error("Создатель группы не найден!");
+            creatorPublicKeyBase64 = creatorObj.publicKey;
+        }
 
-            // 1. Ищем НАШ личный сейф (Используем fullGroup вместо group)
-            const myMemberRecord = fullGroup.members.find(m => m.username === myUsername);
-            const encryptedKeyBox = JSON.parse(myMemberRecord.encryptedKeyBox);
+        // Создаем мост с создателем для расшифровки ключа группы
+        const creatorSharedKey = await deriveSharedSecret(creatorPublicKeyBase64);
+        const rawGroupKeyBuffer = await decryptMessage(encryptedKeyBox, creatorSharedKey);
+        
+        if (!rawGroupKeyBuffer) {
+            throw new Error("Не удалось расшифровать ключ группы. Ключи не совпадают.");
+        }
 
-            // 2. Читаем "подпись": кто именно зашифровал для нас этот ключ?
-            const creatorUsername = encryptedKeyBox.encryptedBy;
-            
-            // --- 🛡️ ЛОГИКА READ-ONLY ДЛЯ КАНАЛОВ ---
-            const inputArea = document.querySelector('.input-area-wrapper');
-            // Если это канал, и мы НЕ его создатель -> прячем строку ввода!
-            if (fullGroup.isChannel && creatorUsername !== myUsername) {
-                inputArea.style.display = 'none';
-            } else {
-                // Если это обычная группа или мы создатель канала -> показываем!
-                inputArea.style.display = 'block';
-            }
-            // ------------
-            if (!creatorUsername) {
-                // Если мы пытаемся открыть группу, созданную ДО этого исправления
-                throw new Error("Эта группа имеет старый формат. Пожалуйста, создайте новую группу для тестов!");
-            }
+        // Импортируем общий ключ чата (AES-GCM)
+        currentSharedKey = await window.crypto.subtle.importKey(
+            "raw",
+            rawGroupKeyBuffer,
+            { name: "AES-GCM", length: 256 },
+            true,
+            ["encrypt", "decrypt"]
+        );
 
-            // 3. Достаем публичный ключ создателя
-            let creatorPublicKeyBase64;
-            if (creatorUsername === myUsername) {
-                creatorPublicKeyBase64 = myPublicKeyBase64; // Если мы сами создали
-            } else {
-                // Идем на сервер за ключом создателя
-                const usersRes = await fetch('/api/users');
-                const allUsers = await usersRes.json();
-                const creatorObj = allUsers.find(u => u.username === creatorUsername);
-                if (!creatorObj) throw new Error("Создатель группы не найден!");
-                creatorPublicKeyBase64 = creatorObj.publicKey;
-            }
+        console.log("🔓 Ключ группы успешно расшифрован!");
+        
+        // --- 5. ЗАГРУЗКА ИСТОРИИ ---
+        document.getElementById('messages-list').innerHTML = ''; 
+        
+        const cacheKey = `group_${group.id}`;
+        let history;
+        if (APP_CACHE.history.has(cacheKey)) {
+            history = APP_CACHE.history.get(cacheKey);
+        } else {
+            const histRes = await fetch(`/api/history/group/${group.id}`);
+            history = await histRes.json();
+            APP_CACHE.history.set(cacheKey, history);
+        }
 
-            // 4. Создаем "мост" именно с СОЗДАТЕЛЕМ, а не с самим собой!
-            const creatorSharedKey = await deriveSharedSecret(creatorPublicKeyBase64);
+        const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
+        
+        // --- 6. ЦИКЛ ОТРИСОВКИ СООБЩЕНИЙ ---
+        for (let msg of history) {
+            if (deletedLocally.includes(msg.id)) continue;
 
-            // 5. Расшифровываем сырой ключ группы
-            const rawGroupKeyBuffer = await decryptMessage(encryptedKeyBox, creatorSharedKey);
-            
-            if (!rawGroupKeyBuffer) {
-                throw new Error("Сейф не открылся. Ключи не совпадают.");
-            }
-
-            // 6. Импортируем ключ для чата
-            currentSharedKey = await window.crypto.subtle.importKey(
-                "raw",
-                rawGroupKeyBuffer,
-                { name: "AES-GCM", length: 256 },
-                true,
-                ["encrypt", "decrypt"]
-            );
-
-            console.log("🔓 Ключ группы успешно расшифрован!");
-            
-            // --- ЗАГРУЗКА И РАСШИФРОВКА ИСТОРИИ ГРУППЫ ---
-            // --- ЗАГРУЗКА И РАСШИФРОВКА ИСТОРИИ ГРУППЫ ---
-            document.getElementById('messages-list').innerHTML = ''; 
-            
-            const cacheKey = `group_${group.id}`;
-            let history;
-            if (APP_CACHE.history.has(cacheKey)) {
-                history = APP_CACHE.history.get(cacheKey); // Берем из памяти
-            } else {
-                const histRes = await fetch(`/api/history/group/${group.id}`);
-                history = await histRes.json();
-                APP_CACHE.history.set(cacheKey, history); // Сохраняем на будущее
-            }
-
-            const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
-            // ... (дальше идет цикл for (let msg of history))
-            
-            for (let msg of history) {
-                // НОВОЕ: Если сообщение в нашем "черном списке", просто пропускаем его!
-                if (deletedLocally.includes(msg.id)) continue;
-                try {
-                    const box = msg.secretBox;
-                    const type = msg.sender === myUsername ? 'my-message' : 'other-message';
-                    const senderPrefix = (currentChatIsGroup && type === 'other-message') ? `<b>${msg.sender}:</b><br>` : '';
-                    
-                    if (!box.type || box.type === 'TEXT') {
-                        // Текст расшифровываем обычным способом (он легкий, его можно не кэшировать)
-                        const decryptedBuffer = await decryptMessage(box, currentSharedKey);
-                        if (decryptedBuffer) {
-                            const text = escapeHTML(bufferToText(decryptedBuffer));
-                            const displayText = type === 'other-message' ? senderPrefix + text : text;
-                            displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
-                        }
-                    } else if (box.type === 'ALBUM') {
-                        // --- РАСШИФРОВКА АЛЬБОМА ---
-                        const mediaUrls = [];
-                        for (let imgBox of box.images) {
-                            const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
-                            if (url) // ИСПРАВЛЕНО: Передаем только правильный url
-                                mediaUrls.push({ url: url, type: imgBox.mimeType }); 
-                        }
-                        displayMessage(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
-                    } else {
-                        // --- ИСПОЛЬЗУЕМ КЭШ ДЛЯ ТЯЖЕЛЫХ ФАЙЛОВ ---
-                        const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
-                        
-                        if (mediaUrl) {
-                            if (box.type === 'AUDIO') {
-                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false); 
-                            } else if (box.type === 'VIDEO_CIRCLE') {
-                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true); 
-                            } else {
-                                displayMessage(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead);
-                            }
+            try {
+                const box = msg.secretBox;
+                const type = msg.sender === myUsername ? 'my-message' : 'other-message';
+                const senderPrefix = (type === 'other-message') ? `<b>${escapeHTML(msg.sender)}:</b><br>` : '';
+                
+                if (!box.type || box.type === 'TEXT') {
+                    const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                    if (decryptedBuffer) {
+                        const text = escapeHTML(bufferToText(decryptedBuffer));
+                        const displayText = type === 'other-message' ? senderPrefix + text : text;
+                        // Передаем ID сообщения и данные ответа для контекстного меню
+                        displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
+                    }
+                } else if (box.type === 'ALBUM') {
+                    const mediaUrls = [];
+                    for (let imgBox of box.images) {
+                        const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
+                        if (url) mediaUrls.push({ url: url, type: imgBox.mimeType }); 
+                    }
+                    displayMessage(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
+                } else {
+                    // Тяжелые файлы (аудио, видео, фото, файлы)
+                    const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
+                    if (mediaUrl) {
+                        if (box.type === 'AUDIO') {
+                            displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo); 
+                        } else if (box.type === 'VIDEO_CIRCLE') {
+                            displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo); 
+                        } else {
+                            displayMessage(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
                         }
                     }
-                } catch(e) { console.error("Ошибка истории", e); }
+                }
+            } catch(e) { 
+                console.error("Ошибка отрисовки сообщения в истории:", e); 
             }
-            
-            // Прокручиваем чат в самый низ
-            const messagesList = document.getElementById('messages-list');
-            messagesList.scrollTop = messagesList.scrollHeight;
-
-        } catch (error) {
-            console.error("Ошибка при расшифровке ключа группы:", error);
-            alert("Ошибка входа в группу: " + error.message);
         }
-        updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮДА
+        
+        // Прокрутка вниз
+        const messagesList = document.getElementById('messages-list');
+        messagesList.scrollTop = messagesList.scrollHeight;
+
+    } catch (error) {
+        console.error("Ошибка при входе в группу:", error);
+        alert("Ошибка входа: " + error.message);
     }
+}
 
 const groupSettingsBtn = document.getElementById('group-settings-btn');
 const groupAdminModal = document.getElementById('group-admin-modal');

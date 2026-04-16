@@ -33,7 +33,6 @@ module.exports = (io) => {
                 const payload = JSON.parse(data.text);
 
                 if (payload.isGroup) {
-                    // 1. Ищем группу/канал в базе
                     const group = await prisma.group.findUnique({
                         where: { id: payload.groupId },
                         include: { members: true }
@@ -41,58 +40,49 @@ module.exports = (io) => {
 
                     if (!group) return;
 
-                    // --- 🛡️ ЗАЩИТА КАНАЛА ---
+                    // Проверка прав для каналов
                     if (group.isChannel) {
                         const mySafe = group.members.find(m => m.username === payload.sender);
                         if (mySafe) {
                             const safeData = typeof mySafe.encryptedKeyBox === 'string' ? JSON.parse(mySafe.encryptedKeyBox) : mySafe.encryptedKeyBox;
-                            const admin = safeData.encryptedBy; 
-                            
-                            if (payload.sender !== admin) {
-                                console.warn(`Блокировка: ${payload.sender} не является админом канала!`);
-                                return; // Сервер отклоняет сообщение
+                            if (payload.sender !== safeData.encryptedBy) {
+                                console.warn(`Блокировка: ${payload.sender} не админ канала!`);
+                                return; 
                             }
                         }
                     }
 
-                    // 2. ТОЛЬКО ТЕПЕРЬ СОХРАНЯЕМ В БАЗУ ДАННЫХ (После всех проверок!)
+                    // ВАЖНО: Сохраняем в базу с указанием groupId
                     await prisma.message.create({
                         data: {
-                            id: payload.id, 
+                            id: payload.id,
                             sender: payload.sender,
-                            groupId: payload.groupId,
+                            groupId: payload.groupId, // <-- Без этого история будет пустой
                             secretBox: payload.secretBox
                         }
                     });
 
-                    // 3. Рассылаем всем участникам
+                    // Рассылка участникам
                     group.members.forEach(member => {
                         if (member.username !== payload.sender) {
                             const memberSocketId = onlineUsers.get(member.username);
-                            if (memberSocketId) {
-                                io.to(memberSocketId).emit('receive_message', { text: JSON.stringify(payload) });
-                            }
+                            if (memberSocketId) io.to(memberSocketId).emit('receive_message', { text: JSON.stringify(payload) });
                         }
                     });
                 } else {
-                    // === ЛОГИКА ДЛЯ ЛИЧНЫХ ЧАТОВ ===
+                    // Личные сообщения
                     await prisma.message.create({
                         data: {
-                            id: payload.id, 
+                            id: payload.id,
                             sender: payload.sender,
                             recipient: payload.recipient,
                             secretBox: payload.secretBox
                         }
                     });
-
                     const recipientSocketId = onlineUsers.get(payload.recipient);
-                    if (recipientSocketId) {
-                        io.to(recipientSocketId).emit('receive_message', { text: JSON.stringify(payload) });
-                    }
+                    if (recipientSocketId) io.to(recipientSocketId).emit('receive_message', { text: JSON.stringify(payload) });
                 }
-            } catch (e) {
-                console.error("Ошибка при отправке сообщения:", e);
-            }
+            } catch (e) { console.error("Ошибка записи в базу:", e); }
         });
 
         // --- НОВОЕ: УДАЛЕНИЕ СООБЩЕНИЯ ---
