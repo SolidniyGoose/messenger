@@ -844,7 +844,7 @@
                         if (decryptedBuffer) {
                             const text = escapeHTML(bufferToText(decryptedBuffer));
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
-                            displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead);
+                            displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
                         }
                     } else if (box.type === 'ALBUM') {
                         // --- РАСШИФРОВКА АЛЬБОМА ---
@@ -2395,8 +2395,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     console.log(`🔒 Шифрование голосового сообщения...`);
                     const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
 
-                    // Упаковываем в секретный сейф с типом AUDIO
+                    const msgId = crypto.randomUUID(); // <--- ДОБАВИЛИ ЭТО!
+
                     const payload = {
+                        id: msgId, // <--- И ДОБАВИЛИ СЮДА!
                         sender: myUsername,
                         recipient: currentChatIsGroup ? null : currentChatUser,
                         groupId: currentChatIsGroup ? currentChatUser : null,
@@ -2405,13 +2407,12 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                             ...encryptedData, 
                             type: 'AUDIO',
                             mimeType: 'audio/webm',
-                            replyTo: activeReply // <--- Прикрепляем ответ
+                            replyTo: activeReply
                         }
                     };
                     
-                    // --- НОВОЕ: СОХРАНЯЕМ В ЛОКАЛЬНУЮ ИСТОРИЮ ---
                     appendToHistoryCache(currentChatIsGroup, currentChatUser, {
-                        id: msgId,
+                        id: msgId, // Теперь эта переменная существует!
                         sender: myUsername,
                         secretBox: payload.secretBox,
                         createdAt: new Date().toISOString(),
@@ -2421,7 +2422,6 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     socket.emit('send_message', { text: JSON.stringify(payload) });
                     
                     const audioUrl = URL.createObjectURL(audioBlob);
-                    // Передаем isAudio = true в самом конце
                     displayMessage(audioUrl, 'my-message', new Date(), false, '', false, true, false, msgId, activeReply);
                 };
 

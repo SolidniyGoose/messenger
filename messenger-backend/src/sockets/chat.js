@@ -33,18 +33,6 @@ module.exports = (io) => {
                 const payload = JSON.parse(data.text);
 
                 if (payload.isGroup) {
-                    
-                    // === ЛОГИКА ДЛЯ ГРУПП ===
-                    // 1. Сохраняем в БД с привязкой к groupId
-                    await prisma.message.create({
-                        data: {
-                            id: payload.id, // <--- НОВОЕ ПОЛЕ
-                            sender: payload.sender,
-                            groupId: payload.groupId,
-                            secretBox: payload.secretBox
-                        }
-                    });
-
                     // 1. Ищем группу/канал в базе
                     const group = await prisma.group.findUnique({
                         where: { id: payload.groupId },
@@ -53,14 +41,12 @@ module.exports = (io) => {
 
                     if (!group) return;
 
-                    // --- 🛡️ ЗАЩИТА КАНАЛА (ИСПРАВЛЕННАЯ) ---
+                    // --- 🛡️ ЗАЩИТА КАНАЛА ---
                     if (group.isChannel) {
-                        // Ищем сейф отправителя, чтобы прочитать его крипто-подпись
                         const mySafe = group.members.find(m => m.username === payload.sender);
                         if (mySafe) {
-                            // Prisma может вернуть JSON как объект или строку
                             const safeData = typeof mySafe.encryptedKeyBox === 'string' ? JSON.parse(mySafe.encryptedKeyBox) : mySafe.encryptedKeyBox;
-                            const admin = safeData.encryptedBy; // Тот, кто зашифровал ключи - тот и Создатель
+                            const admin = safeData.encryptedBy; 
                             
                             if (payload.sender !== admin) {
                                 console.warn(`Блокировка: ${payload.sender} не является админом канала!`);
@@ -69,22 +55,30 @@ module.exports = (io) => {
                         }
                     }
 
-                    if (group) {
-                        // 3. Рассылаем всем онлайн-участникам (кроме самого отправителя)
-                        group.members.forEach(member => {
-                            if (member.username !== payload.sender) {
-                                const memberSocketId = onlineUsers.get(member.username);
-                                if (memberSocketId) {
-                                    io.to(memberSocketId).emit('receive_message', { text: JSON.stringify(payload) });
-                                }
-                            }
-                        });
-                    }
-                } else {
-                    // === СТАРАЯ ЛОГИКА ДЛЯ ЛИЧНЫХ ЧАТОВ ===
+                    // 2. ТОЛЬКО ТЕПЕРЬ СОХРАНЯЕМ В БАЗУ ДАННЫХ (После всех проверок!)
                     await prisma.message.create({
                         data: {
-                            id: payload.id, // <--- НОВОЕ ПОЛЕ
+                            id: payload.id, 
+                            sender: payload.sender,
+                            groupId: payload.groupId,
+                            secretBox: payload.secretBox
+                        }
+                    });
+
+                    // 3. Рассылаем всем участникам
+                    group.members.forEach(member => {
+                        if (member.username !== payload.sender) {
+                            const memberSocketId = onlineUsers.get(member.username);
+                            if (memberSocketId) {
+                                io.to(memberSocketId).emit('receive_message', { text: JSON.stringify(payload) });
+                            }
+                        }
+                    });
+                } else {
+                    // === ЛОГИКА ДЛЯ ЛИЧНЫХ ЧАТОВ ===
+                    await prisma.message.create({
+                        data: {
+                            id: payload.id, 
                             sender: payload.sender,
                             recipient: payload.recipient,
                             secretBox: payload.secretBox
