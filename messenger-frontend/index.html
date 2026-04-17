@@ -181,10 +181,15 @@
             <span class="chat-status">онлайн</span>
         </div>
         
-        <div style="display: flex; align-items: center; gap: 5px;">
+        <div style="display: flex; align-items: center; gap: 2px;">
+            <button id="personal-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Голосовой звонок" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📞</button>
+            <button id="personal-video-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Видеозвонок" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📹</button>
+
+            <button id="group-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Звонок в группе" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📞</button>
+            
             <button id="channel-discussion-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px;" title="Все комментарии">💬</button>
             
-            <button id="group-settings-btn" style="display: none; background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; padding: 5px 10px;">⋮</button>
+            <button id="group-settings-btn" style="display: none; background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">⋮</button>
         </div>
     </div>
     
@@ -984,7 +989,37 @@ const groupAdminModal = document.getElementById('group-admin-modal');
 
 // Показываем кнопку "Три точки" только если это группа
 function updateHeaderButtons() {
-    groupSettingsBtn.style.display = currentChatIsGroup ? 'block' : 'none';
+    const groupSettingsBtn = document.getElementById('group-settings-btn');
+    const groupCallBtn = document.getElementById('group-call-btn');
+    const personalCallBtn = document.getElementById('personal-call-btn');
+    const personalVideoBtn = document.getElementById('personal-video-btn');
+    const channelDiscussionBtn = document.getElementById('channel-discussion-btn');
+
+    if (currentChatIsGroup) {
+        // --- РЕЖИМ ГРУППЫ / КАНАЛА ---
+        groupSettingsBtn.style.display = 'block';
+        groupCallBtn.style.display = 'block';
+        
+        // Прячем личные кнопки
+        personalCallBtn.style.display = 'none';
+        personalVideoBtn.style.display = 'none';
+
+        // Кнопку обсуждения показываем только если это канал (флаг берем из currentGroupData)
+        if (currentGroupData && currentGroupData.isChannel) {
+            channelDiscussionBtn.style.display = 'block';
+        } else {
+            channelDiscussionBtn.style.display = 'none';
+        }
+    } else {
+        // --- РЕЖИМ ЛИЧНОГО ЧАТА ---
+        groupSettingsBtn.style.display = 'none';
+        groupCallBtn.style.display = 'none';
+        channelDiscussionBtn.style.display = 'none';
+
+        // Показываем кнопки звонков для лички
+        personalCallBtn.style.display = 'block';
+        personalVideoBtn.style.display = 'block';
+    }
 }
 
 // Вставьте вызов updateHeaderButtons() в конец функций openChatWith и openGroupChat
