@@ -8,20 +8,58 @@ module.exports = (io) => {
         // --- ОБНОВЛЕННАЯ РЕГИСТРАЦИЯ СОКЕТА ---
         socket.on('register_user', async (username) => {
             try {
-                // Проверяем, существует ли пользователь в базе данных
-                const userExists = await prisma.user.findUnique({
-                    where: { username: username }
-                });
-
+                const userExists = await prisma.user.findUnique({ where: { username: username } });
                 if (!userExists) {
-                    // Если базы нет (сделали clear.js), приказываем браузеру выйти!
                     socket.emit('force_logout');
                     return;
                 }
-
                 onlineUsers.set(username, socket.id);
-            } catch (e) {
-                console.error("Ошибка при проверке пользователя:", e);
+                
+                // НОВОЕ: Сообщаем всем, что этот пользователь теперь В СЕТИ
+                io.emit('user_status_change', { username: username, isOnline: true });
+                
+            } catch (e) { console.error("Ошибка при проверке пользователя:", e); }
+        });
+
+        // НОВОЕ: Эндпоинт, чтобы клиент мог спросить "А этот юзер сейчас онлайн?"
+        socket.on('check_online_status', (username, callback) => {
+            if (typeof callback === 'function') {
+                callback(onlineUsers.has(username));
+            }
+        });
+
+        // --- НОВОЕ: ИНДИКАТОР "ПЕЧАТАЕТ..." ---
+        socket.on('typing', async (data) => {
+            if (data.isGroup) {
+                const group = await prisma.group.findUnique({ where: { id: data.groupId }, include: { members: true } });
+                if (group) {
+                    group.members.forEach(m => {
+                        if (m.username !== data.sender) { // Отправляем всем, кроме себя
+                            const sId = onlineUsers.get(m.username);
+                            if (sId) io.to(sId).emit('user_typing', data);
+                        }
+                    });
+                }
+            } else {
+                const sId = onlineUsers.get(data.recipient);
+                if (sId) io.to(sId).emit('user_typing', data);
+            }
+        });
+
+        socket.on('stop_typing', async (data) => {
+            if (data.isGroup) {
+                const group = await prisma.group.findUnique({ where: { id: data.groupId }, include: { members: true } });
+                if (group) {
+                    group.members.forEach(m => {
+                        if (m.username !== data.sender) {
+                            const sId = onlineUsers.get(m.username);
+                            if (sId) io.to(sId).emit('user_stopped_typing', data);
+                        }
+                    });
+                }
+            } else {
+                const sId = onlineUsers.get(data.recipient);
+                if (sId) io.to(sId).emit('user_stopped_typing', data);
             }
         });
 
@@ -136,10 +174,13 @@ module.exports = (io) => {
             } catch (e) { console.error("Ошибка статуса:", e); }
         });
 
+        // --- ОБНОВЛЕННОЕ ОТКЛЮЧЕНИЕ ---
         socket.on('disconnect', () => {
             for (let [username, id] of onlineUsers.entries()) {
                 if (id === socket.id) {
                     onlineUsers.delete(username);
+                    // НОВОЕ: Сообщаем всем, что этот пользователь ВЫШЕЛ ИЗ СЕТИ
+                    io.emit('user_status_change', { username: username, isOnline: false });
                     break;
                 }
             }

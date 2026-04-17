@@ -2328,6 +2328,94 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         messagesList.appendChild(msgDiv);
         messagesList.scrollTop = messagesList.scrollHeight;
     }
+
+    // --- ЛОГИКА ОНЛАЙНА И ИНДИКАТОРА "ПЕЧАТАЕТ..." ---
+    let typingTimer;                 // Таймер для отправки 'stop_typing'
+    let hideTypingIndicatorTimer;    // Таймер для скрытия надписи, если сервер затупил
+    let originalStatusText = '';     // Запоминаем, что было написано до "печатает..."
+    const TYPING_DELAY = 1500;       // Через 1.5 секунды после последней буквы надпись исчезнет
+
+    // 1. Слушаем ввод текста с клавиатуры
+    messageInput.addEventListener('input', () => {
+        if (!currentChatUser) return; // Если чат не открыт - ничего не делаем
+
+        // Отправляем на сервер сигнал "Я печатаю"
+        socket.emit('typing', {
+            sender: myUsername,
+            recipient: currentChatIsGroup ? null : currentChatUser,
+            groupId: currentChatIsGroup ? currentChatUser : null,
+            isGroup: currentChatIsGroup
+        });
+
+        // Сбрасываем старый таймер и заводим новый
+        clearTimeout(typingTimer);
+        typingTimer = setTimeout(() => {
+            socket.emit('stop_typing', {
+                sender: myUsername,
+                recipient: currentChatIsGroup ? null : currentChatUser,
+                groupId: currentChatIsGroup ? currentChatUser : null,
+                isGroup: currentChatIsGroup
+            });
+        }, TYPING_DELAY);
+    });
+
+    // 2. Обрабатываем событие: Кто-то начал печатать
+    socket.on('user_typing', (data) => {
+        // Проверяем, смотрим ли мы сейчас именно в ТОТ чат, где нам печатают
+        const isRelevant = data.isGroup 
+            ? (currentChatIsGroup && currentChatUser === data.groupId)
+            : (!currentChatIsGroup && currentChatUser === data.sender);
+
+        if (isRelevant) {
+            const statusEl = document.querySelector('.chat-status');
+            
+            // Запоминаем старый статус (онлайн или кол-во участников), только если там не "печатает"
+            if (!statusEl.textContent.includes('печатает')) {
+                originalStatusText = statusEl.textContent;
+            }
+            
+            // Если это группа - показываем КТО печатает, если личка - просто "печатает..."
+            statusEl.textContent = data.isGroup ? `${data.sender} печатает...` : 'печатает...';
+            statusEl.style.color = 'var(--primary-color)';
+
+            // Автоматически скрываем через 3 секунды на случай, если пакет 'stop_typing' потерялся в сети
+            clearTimeout(hideTypingIndicatorTimer);
+            hideTypingIndicatorTimer = setTimeout(() => {
+                statusEl.textContent = originalStatusText;
+            }, 3000);
+        }
+    });
+
+    // 3. Обрабатываем событие: Кто-то перестал печатать
+    socket.on('user_stopped_typing', (data) => {
+        const isRelevant = data.isGroup 
+            ? (currentChatIsGroup && currentChatUser === data.groupId)
+            : (!currentChatIsGroup && currentChatUser === data.sender);
+
+        if (isRelevant) {
+            const statusEl = document.querySelector('.chat-status');
+            statusEl.textContent = originalStatusText;
+            clearTimeout(hideTypingIndicatorTimer);
+        }
+    });
+
+    // 4. Следим за общим онлайном друзей
+    socket.on('user_status_change', (data) => {
+        // Обновляем шапку, только если открыт ЛИЧНЫЙ чат с этим человеком
+        if (!currentChatIsGroup && currentChatUser === data.username) {
+            const statusEl = document.querySelector('.chat-status');
+            if (data.isOnline) {
+                statusEl.textContent = 'онлайн';
+                statusEl.style.color = 'var(--primary-color)';
+                originalStatusText = 'онлайн'; // Обновляем сохраненный статус
+            } else {
+                statusEl.textContent = 'был(а) недавно';
+                statusEl.style.color = 'var(--text-muted)';
+                originalStatusText = 'был(а) недавно';
+            }
+        }
+    });
+
     // --- 3. ОТПРАВКА ОБЫЧНОГО СООБЩЕНИЯ ---
     async function sendMessage() {
         const text = messageInput.value.trim();
