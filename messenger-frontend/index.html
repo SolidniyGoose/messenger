@@ -137,6 +137,29 @@
             <div id="shared-media-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; overflow-y: auto; flex: 1; align-content: flex-start; background: var(--bg-main);">
                 </div>
         </div>
+        <div id="chat-info-files-view" style="display: none; flex-direction: column; width: 100%; height: 100%;">
+            <div style="display: flex; align-items: center; gap: 15px; padding: 15px 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-header);">
+                <button class="back-to-info-btn" style="background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; padding: 0;">←</button>
+                <div style="display: flex; flex-direction: column;">
+                    <span style="font-size: 16px; font-weight: 600; color: var(--text-main);">Файлы</span>
+                    <span id="shared-files-count" style="font-size: 12px; color: var(--text-muted);">0 файлов</span>
+                </div>
+            </div>
+            <div id="shared-files-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-main);">
+                </div>
+        </div>
+
+        <div id="chat-info-links-view" style="display: none; flex-direction: column; width: 100%; height: 100%;">
+            <div style="display: flex; align-items: center; gap: 15px; padding: 15px 20px; border-bottom: 1px solid var(--border-color); background: var(--bg-header);">
+                <button class="back-to-info-btn" style="background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; padding: 0;">←</button>
+                <div style="display: flex; flex-direction: column;">
+                    <span style="font-size: 16px; font-weight: 600; color: var(--text-main);">Ссылки</span>
+                    <span id="shared-links-count" style="font-size: 12px; color: var(--text-muted);">0 ссылок</span>
+                </div>
+            </div>
+            <div id="shared-links-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg-main);">
+                </div>
+        </div>
 
     </div>
 </div>
@@ -1263,6 +1286,128 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         } catch (e) {
             console.error("Ошибка загрузки:", e);
         }
+    });
+
+    // --- ЛОГИКА КАТАЛОГОВ ФАЙЛОВ И ССЫЛОК ---
+    const chatInfoFilesView = document.getElementById('chat-info-files-view');
+    const chatInfoLinksView = document.getElementById('chat-info-links-view');
+    const sharedFilesList = document.getElementById('shared-files-list');
+    const sharedLinksList = document.getElementById('shared-links-list');
+
+    // Универсальная кнопка "Назад" для всех под-экранов
+    document.querySelectorAll('.back-to-info-btn').forEach(btn => {
+        btn.onclick = () => {
+            chatInfoMediaView.style.display = 'none';
+            chatInfoFilesView.style.display = 'none';
+            chatInfoLinksView.style.display = 'none';
+            chatInfoMainView.style.display = 'flex';
+        };
+    });
+
+    // 1. ЛОГИКА ФАЙЛОВ
+    document.getElementById('info-files-btn').addEventListener('click', async () => {
+        chatInfoMainView.style.display = 'none';
+        chatInfoFilesView.style.display = 'flex';
+        sharedFilesList.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted);">Поиск файлов...</div>';
+
+        const cacheKey = currentChatIsGroup ? `group_${currentChatUser}` : `chat_${currentChatUser}`;
+        const history = APP_CACHE.history.get(cacheKey) || [];
+        const files = history.filter(msg => {
+            const box = typeof msg.secretBox === 'string' ? JSON.parse(msg.secretBox) : msg.secretBox;
+            return box.type === 'FILE';
+        }).reverse();
+
+        document.getElementById('shared-files-count').textContent = `${files.length} файлов`;
+        sharedFilesList.innerHTML = '';
+
+        if (files.length === 0) {
+            sharedFilesList.innerHTML = '<div style="padding: 40px 20px; text-align: center; color: var(--text-muted);">Файлов пока нет</div>';
+            return;
+        }
+
+        for (let msg of files) {
+            const box = typeof msg.secretBox === 'string' ? JSON.parse(msg.secretBox) : msg.secretBox;
+            const date = new Date(msg.createdAt).toLocaleDateString();
+            
+            const item = document.createElement('div');
+            item.style.cssText = "display: flex; align-items: center; gap: 15px; padding: 12px 20px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: 0.2s;";
+            item.onmouseover = () => item.style.background = 'rgba(0,0,0,0.03)';
+            item.onmouseout = () => item.style.background = 'transparent';
+
+            item.innerHTML = `
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: var(--gradient-primary); display: flex; align-items: center; justify-content: center; color: white; font-size: 20px;">📁</div>
+                <div style="flex: 1; overflow: hidden;">
+                    <div style="font-weight: 500; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(box.fileName)}</div>
+                    <div style="font-size: 12px; color: var(--text-muted);">${date}</div>
+                </div>
+            `;
+
+            // При клике на файл в списке - скачиваем его
+            item.onclick = async () => {
+                const url = await getDecryptedMediaUrl(box, currentSharedKey);
+                if (url) {
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = box.fileName;
+                    a.click();
+                }
+            };
+            sharedFilesList.appendChild(item);
+        }
+    });
+
+    // 2. ЛОГИКА ССЫЛОК
+    document.getElementById('info-links-btn').addEventListener('click', async () => {
+        chatInfoMainView.style.display = 'none';
+        chatInfoLinksView.style.display = 'flex';
+        sharedLinksList.innerHTML = '<div style="padding: 30px; text-align: center; color: var(--text-muted);">Ищем ссылки...</div>';
+
+        const cacheKey = currentChatIsGroup ? `group_${currentChatUser}` : `chat_${currentChatUser}`;
+        const history = APP_CACHE.history.get(cacheKey) || [];
+        const urlRegex = /(https?:\/\/[^\s]+)/g;
+        let linksFound = [];
+
+        // Проходим по истории и расшифровываем текст, чтобы найти ссылки
+        for (let msg of history) {
+            const box = typeof msg.secretBox === 'string' ? JSON.parse(msg.secretBox) : msg.secretBox;
+            if (!box.type || box.type === 'TEXT') {
+                const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                if (decryptedBuffer) {
+                    const text = bufferToText(decryptedBuffer);
+                    const matches = text.match(urlRegex);
+                    if (matches) {
+                        matches.forEach(url => linksFound.push({ url, date: new Date(msg.createdAt).toLocaleDateString() }));
+                    }
+                }
+            }
+        }
+
+        linksFound.reverse();
+        document.getElementById('shared-links-count').textContent = `${linksFound.length} ссылок`;
+        sharedLinksList.innerHTML = '';
+
+        if (linksFound.length === 0) {
+            sharedLinksList.innerHTML = '<div style="padding: 40px 20px; text-align: center; color: var(--text-muted);">Ссылок пока нет</div>';
+            return;
+        }
+
+        linksFound.forEach(link => {
+            const item = document.createElement('div');
+            item.style.cssText = "display: flex; align-items: center; gap: 15px; padding: 12px 20px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: 0.2s;";
+            item.onmouseover = () => item.style.background = 'rgba(0,0,0,0.03)';
+            item.onmouseout = () => item.style.background = 'transparent';
+
+            item.innerHTML = `
+                <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(0,120,255,0.1); display: flex; align-items: center; justify-content: center; color: var(--primary-color); font-size: 20px;">🔗</div>
+                <div style="flex: 1; overflow: hidden;">
+                    <div style="font-weight: 500; color: var(--primary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(link.url)}</div>
+                    <div style="font-size: 12px; color: var(--text-muted);">${link.date}</div>
+                </div>
+            `;
+
+            item.onclick = () => window.open(link.url, '_blank');
+            sharedLinksList.appendChild(item);
+        });
     });
 
     // --- ЛОГИКА СОЗДАНИЯ: ГРУППА ИЛИ КАНАЛ ---
