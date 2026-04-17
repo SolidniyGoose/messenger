@@ -806,7 +806,7 @@
                         if (decryptedBuffer) {
                             const text = escapeHTML(bufferToText(decryptedBuffer));
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
-                            displayMessage(displayText, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
+                            displayMessage(displayText, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
                         }
                     } else if (box.type === 'ALBUM') {
                         // --- РАСШИФРОВКА АЛЬБОМА ---
@@ -816,18 +816,18 @@
                             if (url) // ИСПРАВЛЕНО: Передаем только правильный url
                                 mediaUrls.push({ url: url, type: imgBox.mimeType }); 
                         }
-                        displayMessage(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
+                        displayMessage(mediaUrls, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
                     } else {
                         // --- ИСПОЛЬЗУЕМ КЭШ ДЛЯ ТЯЖЕЛЫХ ФАЙЛОВ ---
                         const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
                         
                         if (mediaUrl) {
                             if (box.type === 'AUDIO') {
-                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo);
+                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo);
                             } else if (box.type === 'VIDEO_CIRCLE') {
-                                displayMessage(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo);
+                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo);
                             } else {
-                                displayMessage(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
+                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
                             }
                         }
                     }
@@ -892,8 +892,8 @@
                 const senderPrefix = (type === 'other-message') ? `<b>${escapeHTML(msg.sender)}:</b><br>` : '';
                 
                 // Функция-обертка, чтобы добавить кнопку "Комментарии"
-                const renderWithCommentBtn = (contentHtml, type, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum) => {
-                    displayMessage(contentHtml, type, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum);
+                const renderWithCommentBtn = (contentHtml, senderName, type, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum) => {
+                    displayMessage(contentHtml, type, senderName, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum);
                     
                     // Если мы в режиме канала и это пост - приклеиваем под него кнопку
                     if (currentGroupData && currentGroupData.isChannel && currentChannelView === 'main' && !box.isComment) {
@@ -918,7 +918,7 @@
                     if (decryptedBuffer) {
                         const text = escapeHTML(bufferToText(decryptedBuffer));
                         const displayText = type === 'other-message' ? senderPrefix + text : text;
-                        renderWithCommentBtn(displayText, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
+                        renderWithCommentBtn(displayText, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
                     }
                 } else if (box.type === 'ALBUM') {
                     const mediaUrls = [];
@@ -926,16 +926,16 @@
                         const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
                         if (url) mediaUrls.push({ url: url, type: imgBox.mimeType }); 
                     }
-                    renderWithCommentBtn(mediaUrls, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
+                    renderWithCommentBtn(mediaUrls, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
                 } else {
                     const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
                     if (mediaUrl) {
                         if (box.type === 'AUDIO') {
-                            renderWithCommentBtn(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo); 
+                            renderWithCommentBtn(mediaUrl, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo); 
                         } else if (box.type === 'VIDEO_CIRCLE') {
-                            renderWithCommentBtn(mediaUrl, type, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo); 
+                            renderWithCommentBtn(mediaUrl, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo); 
                         } else {
-                            renderWithCommentBtn(mediaUrl, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
+                            renderWithCommentBtn(mediaUrl, type, senderName, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
                         }
                     }
                 }
@@ -2157,18 +2157,49 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     document.getElementById('close-shared-media-btn').addEventListener('click', () => {
         sharedMediaModal.style.display = 'none';
     });
-    // --- 2. ОТРИСОВКА СООБЩЕНИЙ ---
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ВСЕ ФОРМАТЫ) ---
-    function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false) {
+    // ИСПРАВЛЕНИЕ: Добавили параметр senderName для отрисовки аватарок
+    function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false) {
         const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        
+        // Обертка для сообщения и аватарки (Flexbox)
+        const wrapperDiv = document.createElement('div');
+        wrapperDiv.style.cssText = `display: flex; gap: 10px; margin-bottom: 15px; width: 100%; align-items: flex-end; justify-content: ${className === 'my-message' ? 'flex-end' : 'flex-start'};`;
+        
+        if (messageId) msgDiv.id = `msg-${messageId}`;
+
+        // --- ЛОГИКА АВАТАРКИ (ТОЛЬКО ДЛЯ ВХОДЯЩИХ В ГРУППЕ ИЛИ ЛИЧКЕ) ---
+        let avatarHtml = '';
+        if (className === 'other-message' && senderName) {
+            let avatarContent = senderName.charAt(0).toUpperCase();
+            let avatarBg = 'var(--gradient-primary)';
+            
+            // Пытаемся достать реальную аватарку из кэша профилей
+            if (APP_CACHE.profiles.has(senderName)) {
+                const profileData = APP_CACHE.profiles.get(senderName).data;
+                if (profileData && profileData.avatar) {
+                    avatarContent = `<img src="${profileData.avatar}" style="width:100%; height:100%; object-fit:cover;">`;
+                    avatarBg = 'transparent';
+                }
+            }
+            
+            // Если это личный чат, аватарку показываем только один раз (или вообще не показываем, так как она есть сверху). 
+            // Но для красоты оставим её у каждого сообщения, как в ВК/iMessage.
+            avatarHtml = `
+                <div style="width: 32px; height: 32px; border-radius: 50%; background: ${avatarBg}; color: white; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: bold; overflow: hidden; flex-shrink: 0; box-shadow: var(--shadow-sm);">
+                    ${avatarContent}
+                </div>
+            `;
+        }
+
         msgDiv.className = `message ${className}`;
-        if (messageId) msgDiv.id = `msg-${messageId}`; // Назначаем ID элементу
+        // Убираем нижний отступ у самого бабла, так как он теперь на wrapperDiv
+        msgDiv.style.marginBottom = '0'; 
 
         let statusHtml = className === 'my-message' ? `<span class="msg-status ${isRead ? 'status-read' : 'status-sent'}">${isRead ? '✓✓' : '✓'}</span>` : '';
 
         // --- ГЕНЕРИРУЕМ БЛОК ОТВЕТА ВНУТРИ СООБЩЕНИЯ ---
-        // 1. Очищаем блок ответа
         let replyHtml = '';
         if (replyData) {
             replyHtml = `
@@ -2186,13 +2217,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             msgDiv.style.minWidth = '180px';
             msgDiv.style.maxWidth = '180px';
             msgDiv.style.height = '180px';
-            msgDiv.style.marginBottom = '15px';
 
-            // ДОБАВИЛИ КЛАСС class="circle-video-player" в тег <video>
             msgDiv.innerHTML = `${replyHtml}
                 <div style="position: relative; width: 100%; height: 100%;">
                     <video src="${content}" class="circle-video-player" playsinline autoplay loop muted style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: pointer; display: block; background: #000;"></video>
-                    
                     <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.4); color: white; padding: 3px 8px; border-radius: 12px; font-size: 11px; display: flex; align-items: center; gap: 4px; z-index: 2; backdrop-filter: blur(4px);">
                         ${timeString}
                         ${className === 'my-message' ? `<span class="msg-status ${isRead ? 'status-read' : 'status-sent'}" style="color: white; margin-left: 2px;">${isRead ? '✓✓' : '✓'}</span>` : ''}
@@ -2200,44 +2228,20 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 </div>
             `;
 
-            // Управление анимацией и плеером (Бронебойный JS-метод)
             setTimeout(() => {
                 const videoNode = msgDiv.querySelector('video');
                 if (videoNode) {
-                    
-                    // 1. Задаем плавность прямо в элемент
                     videoNode.style.transition = 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.2), box-shadow 0.3s ease';
                     videoNode.style.position = 'relative';
-
-                    // Функция УВЕЛИЧЕНИЯ (Play)
-                    const playAnim = () => {
-                        videoNode.style.transform = 'scale(1.08)';
-                        videoNode.style.boxShadow = '0 10px 25px rgba(0,0,0,0.5)';
-                        videoNode.style.zIndex = '10';
-                    };
-
-                    // Функция ВОЗВРАТА (Pause)
-                    const pauseAnim = () => {
-                        videoNode.style.transform = 'scale(1)';
-                        videoNode.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-                        videoNode.style.zIndex = '1';
-                    };
-
-                    // Вешаем слушатели на системные события плеера
+                    const playAnim = () => { videoNode.style.transform = 'scale(1.08)'; videoNode.style.boxShadow = '0 10px 25px rgba(0,0,0,0.5)'; videoNode.style.zIndex = '10'; };
+                    const pauseAnim = () => { videoNode.style.transform = 'scale(1)'; videoNode.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)'; videoNode.style.zIndex = '1'; };
                     videoNode.addEventListener('play', playAnim);
                     videoNode.addEventListener('pause', pauseAnim);
                     videoNode.addEventListener('ended', pauseAnim);
-
-                    // Если видео уже начало играть из-за autoplay
                     if (!videoNode.paused) playAnim();
-
-                    // Клик по видео ставит паузу/плей
-                    videoNode.onclick = () => {
-                        if (videoNode.paused) videoNode.play();
-                        else videoNode.pause();
-                    };
+                    videoNode.onclick = () => { if (videoNode.paused) videoNode.play(); else videoNode.pause(); };
                 }
-            }, 50); // Чуть увеличили задержку для надежности
+            }, 50);
 
         } else {
             // === СТАНДАРТНАЯ ОТРИСОВКА ===
@@ -2245,106 +2249,73 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             
             if (isAudio) {
                 innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
-            } 
-            // --- НОВОЕ: ОТРИСОВКА АЛЬБОМА (С ВИДЕО) ---
-            else if (isAlbum) {
-                const mediaItems = content; // Это массив объектов [{url, type}]
-                // Кодируем массив, чтобы безопасно передать в функцию onclick
+            } else if (isAlbum) {
+                const mediaItems = content; 
                 const encodedMediaString = encodeURIComponent(JSON.stringify(mediaItems)); 
                 let gridHtml = '';
-                
                 const previewItems = mediaItems.slice(0, 4);
                 
                 previewItems.forEach((item, i) => {
                     let overlay = '';
                     const isVideo = item.type && item.type.startsWith('video/');
-                    
-                    // Рисуем иконку Play для видео
                     let playIcon = isVideo ? `<div style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); background:rgba(0,0,0,0.5); border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; color:white; font-size:18px; z-index:1;">▶</div>` : '';
-
                     if (i === 3 && mediaItems.length > 4) {
                         overlay = `<div style="position:absolute; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; color:white; font-size:24px; font-weight:bold; z-index:2; border-radius:4px;">+${mediaItems.length - 3}</div>`;
                     }
-                    
-                    // Для превью видео используем тот же тег video, но с фиксацией на первом кадре (#t=0.1)
                     const previewTag = isVideo 
                         ? `<video src="${item.url}#t=0.1" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:4px;"></video>`
                         : `<img src="${item.url}" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:4px;">`;
 
-                    gridHtml += `
-                        <div style="position:relative; width: 100%; padding-bottom: 100%; cursor:pointer;" onclick="openGallery('${encodedMediaString}', ${i})">
-                            ${previewTag}
-                            ${playIcon}
-                            ${overlay}
-                        </div>`;
+                    gridHtml += `<div style="position:relative; width: 100%; padding-bottom: 100%; cursor:pointer;" onclick="openGallery('${encodedMediaString}', ${i})">${previewTag}${playIcon}${overlay}</div>`;
                 });
                 
-                // --- ФИКС ДЛЯ ОДИНОЧНЫХ ФОТО/ВИДЕО ---
-                // Если файл всего один, делаем 1 колонку (на всю ширину). Если файлов 2 и больше - делаем сетку 2x2.
                 const columns = mediaItems.length === 1 ? '1fr' : 'repeat(2, 1fr)';
-                
                 innerContent = `<div style="display: grid; grid-template-columns: ${columns}; gap: 4px; width: 240px; border-radius: 8px; overflow: hidden; margin-bottom: 5px;">${gridHtml}</div>`;
-            }
-            else if (isImage) {
+            } else if (isImage) {
                 innerContent = `<img src="${content}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" onclick="openGallery('${content}', 0)" />`;
-            } 
-            else if (fileName) {
+            } else if (fileName) {
                 innerContent = `<div style="display: flex; align-items: center; gap: 10px;">📄 <b>${fileName}</b></div>`;
-            } 
-            else {
+            } else {
                 msgDiv.classList.add('text-message');
-                innerContent = content; // <--- Убрали защиту отсюда
+                innerContent = content; 
             }
 
             msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${timeString}${statusHtml}</span>`;
         }
 
-       // --- ВЕШАЕМ ПКМ (Десктоп) И ЗАЖАТИЕ (Мобилки) ---
-        let pressTimer;
+        // Собираем всё в обертку
+        if (className === 'other-message') {
+            wrapperDiv.innerHTML = avatarHtml; // Сначала аватарка
+            wrapperDiv.appendChild(msgDiv);    // Потом сообщение
+        } else {
+            wrapperDiv.appendChild(msgDiv);    // Для своих сообщений только бабл
+        }
 
+        // --- ВЕШАЕМ ПКМ И ЗАЖАТИЕ (на сам msgDiv, а не на обертку) ---
+        let pressTimer;
         const openContextMenu = (x, y) => {
             selectedMessageId = messageId;
             msgCtxBackdrop.style.display = 'block';
             msgCtxMenu.style.display = 'flex';
-            
-            // Скрываем кнопку "Удалить у всех", если сообщение чужое
             document.getElementById('ctx-delete-btn').style.display = className === 'my-message' ? 'flex' : 'none';
-            
-            // Подготавливаем текст для ответа
             let previewText = (isImage || isCircleVideo || fileName || isAudio) ? "Медиафайл" : content;
-            let senderName = className === 'my-message' ? myUsername : (msgDiv.querySelector('b') ? msgDiv.querySelector('b').textContent.replace(':','') : currentChatUser);
-            
-            document.getElementById('reply-sender').textContent = senderName;
+            let senderNameForReply = className === 'my-message' ? myUsername : (msgDiv.querySelector('b') ? msgDiv.querySelector('b').textContent.replace(':','') : currentChatUser);
+            document.getElementById('reply-sender').textContent = senderNameForReply;
             document.getElementById('reply-text').textContent = previewText;
-
-            // Высчитываем позицию, чтобы меню не вылезало за края экрана
-            let menuX = x;
-            let menuY = y;
-            if (menuX + 180 > window.innerWidth) menuX = window.innerWidth - 190; // 180 - ширина меню
-            if (menuY + 150 > window.innerHeight) menuY = window.innerHeight - 160; // 150 - высота меню
-
+            let menuX = x, menuY = y;
+            if (menuX + 180 > window.innerWidth) menuX = window.innerWidth - 190;
+            if (menuY + 150 > window.innerHeight) menuY = window.innerHeight - 160;
             msgCtxMenu.style.left = menuX + 'px';
             msgCtxMenu.style.top = menuY + 'px';
         };
 
-        // Десктоп: Правая кнопка мыши (ПКМ)
-        msgDiv.addEventListener('contextmenu', (e) => {
-            e.preventDefault(); // Блокируем стандартное серое меню браузера
-            openContextMenu(e.clientX, e.clientY);
-        });
-
-        // Мобильные: Долгое нажатие (зажатие)
-        msgDiv.addEventListener('touchstart', (e) => {
-            pressTimer = setTimeout(() => {
-                openContextMenu(e.touches[0].clientX, e.touches[0].clientY);
-            }, 500); // 500 миллисекунд для вызова меню
-        }, { passive: true });
-
-        // Если палец дернулся или отпустил экран раньше 500мс - отменяем меню
+        msgDiv.addEventListener('contextmenu', (e) => { e.preventDefault(); openContextMenu(e.clientX, e.clientY); });
+        msgDiv.addEventListener('touchstart', (e) => { pressTimer = setTimeout(() => { openContextMenu(e.touches[0].clientX, e.touches[0].clientY); }, 500); }, { passive: true });
         msgDiv.addEventListener('touchend', () => clearTimeout(pressTimer));
         msgDiv.addEventListener('touchmove', () => clearTimeout(pressTimer));
 
-        messagesList.appendChild(msgDiv);
+        // Добавляем ОБЕРТКУ в список сообщений
+        messagesList.appendChild(wrapperDiv);
         messagesList.scrollTop = messagesList.scrollHeight;
     }
 
@@ -2470,7 +2441,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             });
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
-            displayMessage(escapeHTML(text), 'my-message', new Date(), false, '', false, false, false, msgId, activeReply);
+            displayMessage(escapeHTML(text), 'my-message', myUsername, new Date(), false, '', false, false, false, msgId, activeReply);
             messageInput.value = '';
             activeReply = null;
             replyBanner.style.display = 'none';
@@ -2601,7 +2572,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             socket.emit('send_message', { text: JSON.stringify(payload) });
             
             const fileUrl = URL.createObjectURL(file);
-            displayMessage(fileUrl, 'my-message', new Date(), isImage, file.name, false, false, false, msgId, activeReply);
+            displayMessage(fileUrl, 'my-message', myUsername, new Date(), isImage, file.name, false, false, false, msgId, activeReply);
             // Сбрасываем ответ после отправки
             activeReply = null;
             replyBanner.style.display = 'none';
@@ -2734,7 +2705,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 socket.emit('send_message', { text: JSON.stringify(payload) });
                 
                 const videoUrl = URL.createObjectURL(videoBlob);
-                displayMessage(videoUrl, 'my-message', new Date(), false, '', false, false, true, msgId, activeReply);
+                displayMessage(videoUrl, 'my-message', myUsername, new Date(), false, '', false, false, true, msgId, activeReply);
             };
 
             circleMediaRecorder.start(100); 
@@ -2934,7 +2905,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     socket.emit('send_message', { text: JSON.stringify(payload) });
                     
                     const audioUrl = URL.createObjectURL(audioBlob);
-                    displayMessage(audioUrl, 'my-message', new Date(), false, '', false, true, false, msgId, activeReply);
+                    displayMessage(fileUrl, 'my-message', myUsername, new Date(), isImage, file.name, false, false, false, msgId, activeReply);
                 };
 
                 mediaRecorder.start();
@@ -3049,7 +3020,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             });
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
-            displayMessage(localUrls, 'my-message', new Date(), false, '', false, false, false, msgId, activeReply, true);
+            displayMessage(localUrls, 'my-message', myUsername, new Date(), false, '', false, false, false, msgId, activeReply, true);
 
             activeReply = null;
             replyBanner.style.display = 'none';
@@ -3144,7 +3115,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 if (!box.type || box.type === 'TEXT') {
                     const text = escapeHTML(bufferToText(decryptedBuffer));
                     const displayText = payload.isGroup ? senderPrefix + text : text;
-                    displayMessage(displayText, type, new Date(), false, '', false, false, false, payload.id, box.replyTo);
+                    displayMessage(displayText, type, payload.sender, new Date(), false, '', false, false, false, payload.id, box.replyTo);
                 // Внутри receive_message:
                 } else if (box.type === 'ALBUM') {
                     const mediaUrls = [];
@@ -3156,19 +3127,19 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                             mediaUrls.push({ url: newUrl, type: imgBox.mimeType });
                         }
                     }
-                    displayMessage(mediaUrls, type, new Date(), false, '', false, false, false, payload.id, box.replyTo, true);
+                    displayMessage(mediaUrls, type, payload.sender, new Date(), false, '', false, false, false, payload.id, box.replyTo, true);
                 } else if (box.type === 'AUDIO') {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, type, new Date(), false, '', false, true, false, payload.id, box.replyTo);
+                    displayMessage(url, type, payload.sender, new Date(), false, '', false, true, false, payload.id, box.replyTo);
                 } else if (box.type === 'VIDEO_CIRCLE') {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, type, new Date(), false, '', false, false, true, payload.id, box.replyTo);
+                    displayMessage(url, type, payload.sender, new Date(), false, '', false, false, true, payload.id, box.replyTo);
                 } else {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const fileUrl = URL.createObjectURL(blob);
-                    displayMessage(fileUrl, type, new Date(), box.type === 'IMAGE', box.fileName, false, false, false, payload.id, box.replyTo);
+                    displayMessage(fileUrl, type, payload.sender, new Date(), box.type === 'IMAGE', box.fileName, false, false, false, payload.id, box.replyTo);
                 }
                 
                 // ХИТРЫЙ ТРЮК С ГАЛОЧКАМИ:
