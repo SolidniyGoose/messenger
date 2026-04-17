@@ -748,6 +748,25 @@
         if (window.innerWidth <= 768) document.body.classList.add('mobile-chat-active');
 
         document.querySelector('.chat-name').textContent = user.username;
+        
+        // --- ШАГ 3: Умная проверка онлайна при открытии чата ---
+        const statusEl = document.querySelector('.chat-status');
+        statusEl.textContent = 'проверка...';
+        statusEl.style.color = 'var(--text-muted)';
+        
+        socket.emit('check_online_status', user.username, (isOnline) => {
+            if (isOnline) {
+                statusEl.textContent = 'онлайн';
+                statusEl.style.color = 'var(--primary-color)';
+                originalStatusText = 'онлайн';
+            } else {
+                statusEl.textContent = 'был(а) недавно';
+                statusEl.style.color = 'var(--text-muted)';
+                originalStatusText = 'был(а) недавно';
+            }
+        });
+        // -------------------------------------------------------
+
         currentChatUser = user.username;
         currentChatIsGroup = false; // Обычный чат, не группа
         loadActiveChats(); 
