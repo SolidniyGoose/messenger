@@ -108,18 +108,44 @@
                 </div>
         </div>
         
-        <div style="padding: 15px 20px; display: flex; flex-direction: column; gap: 15px; background: rgba(0,0,0,0.1);">
-            <div style="display: flex; align-items: center; gap: 15px; color: var(--text-main); cursor: pointer; transition: 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-main)'">
+        <div style="padding: 15px 20px; display: flex; flex-direction: column; gap: 15px; background: rgba(0,0,0,0.05);">
+            
+            <div id="info-media-btn" style="display: flex; align-items: center; gap: 15px; color: var(--text-main); cursor: pointer; transition: 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-main)'">
                 <span style="font-size: 20px;">🖼️</span>
-                <span style="font-weight: 500;">Медиа, файлы и ссылки</span>
+                <span style="font-weight: 500;">Медиа</span>
             </div>
-            <div style="display: flex; align-items: center; gap: 15px; color: #ff4d4d; cursor: pointer; transition: 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
+            
+            <div id="info-files-btn" style="display: flex; align-items: center; gap: 15px; color: var(--text-main); cursor: pointer; transition: 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-main)'">
+                <span style="font-size: 20px;">📁</span>
+                <span style="font-weight: 500;">Файлы</span>
+            </div>
+            
+            <div id="info-links-btn" style="display: flex; align-items: center; gap: 15px; color: var(--text-main); cursor: pointer; transition: 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-main)'">
+                <span style="font-size: 20px;">🔗</span>
+                <span style="font-weight: 500;">Ссылки</span>
+            </div>
+
+            <div style="height: 1px; background: var(--border-color); margin: 5px 0;"></div>
+
+            <div id="info-leave-btn" style="display: flex; align-items: center; gap: 15px; color: #ff4d4d; cursor: pointer; transition: 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
                 <span style="font-size: 20px;">🚪</span>
                 <span style="font-weight: 500;">Покинуть чат</span>
             </div>
         </div>
 
     </div>
+</div>
+<div id="shared-media-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-main); z-index: 3600; flex-direction: column; animation: fadeInMenu 0.2s ease;">
+    <div class="chat-header" style="justify-content: flex-start; gap: 15px; box-shadow: var(--shadow-sm);">
+        <button id="close-shared-media-btn" style="background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; padding: 0 10px;">←</button>
+        <div style="display: flex; flex-direction: column;">
+            <span style="font-size: 16px; font-weight: 600; color: var(--text-main);">Медиа</span>
+            <span id="shared-media-count" style="font-size: 12px; color: var(--text-muted);">0 фото и видео</span>
+        </div>
+    </div>
+    
+    <div id="shared-media-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; padding: 2px; overflow-y: auto; flex: 1; align-content: flex-start;">
+        </div>
 </div>
 <div id="group-admin-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3500; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
     <div style="background: var(--bg-sidebar); width: 90%; max-width: 320px; border-radius: 20px; padding: 20px; box-shadow: var(--shadow-md);">
@@ -1868,7 +1894,87 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }
     });
 
+    // --- ЛОГИКА КАТАЛОГА МЕДИА (ФОТО И ВИДЕО) ---
+    const sharedMediaModal = document.getElementById('shared-media-modal');
+    const sharedMediaGrid = document.getElementById('shared-media-grid');
+    const sharedMediaCount = document.getElementById('shared-media-count');
+    
+    // Глобальный массив, чтобы галерея могла листать все фото каталога
+    let catalogGalleryMedia = []; 
 
+    document.getElementById('info-media-btn').addEventListener('click', async () => {
+        // Открываем окно
+        sharedMediaModal.style.display = 'flex';
+        sharedMediaGrid.innerHTML = '<div style="grid-column: 1 / -1; padding: 30px; text-align: center; color: var(--text-muted);">Загрузка и расшифровка...</div>';
+        
+        catalogGalleryMedia = []; // Очищаем старые
+        let rawMediaItems = [];
+
+        // 1. Достаем историю текущего чата из кэша
+        const cacheKey = currentChatIsGroup ? `group_${currentChatUser}` : `chat_${currentChatUser}`;
+        const history = APP_CACHE.history.get(cacheKey) || [];
+
+        // 2. Ищем все картинки, кружочки и альбомы
+        for (let msg of history) {
+            const box = typeof msg.secretBox === 'string' ? JSON.parse(msg.secretBox) : msg.secretBox;
+            if (box.type === 'IMAGE' || box.type === 'VIDEO_CIRCLE') {
+                rawMediaItems.push(box);
+            } else if (box.type === 'ALBUM') {
+                box.images.forEach(img => rawMediaItems.push(img));
+            }
+        }
+
+        // Переворачиваем, чтобы новые фото были сверху
+        rawMediaItems.reverse();
+        sharedMediaCount.textContent = `${rawMediaItems.length} медиафайлов`;
+        sharedMediaGrid.innerHTML = '';
+
+        if (rawMediaItems.length === 0) {
+            sharedMediaGrid.innerHTML = '<div style="grid-column: 1 / -1; padding: 30px; text-align: center; color: var(--text-muted);">Здесь пока нет медиафайлов</div>';
+            return;
+        }
+
+        // 3. Расшифровываем и рендерим по очереди
+        let currentIndex = 0;
+        for (let box of rawMediaItems) {
+            const url = await getDecryptedMediaUrl(box, currentSharedKey);
+            if (url) {
+                const type = box.mimeType || (box.type === 'VIDEO_CIRCLE' ? 'video/webm' : 'image/jpeg');
+                catalogGalleryMedia.push({ url, type });
+                
+                const isVideo = type.startsWith('video');
+                const savedIndex = currentIndex; // Сохраняем индекс для клика
+
+                // Создаем ячейку сетки
+                const cell = document.createElement('div');
+                cell.style.cssText = "aspect-ratio: 1; background: var(--input-bg); cursor: pointer; position: relative; overflow: hidden;";
+                
+                // Для видео ставим иконку Play и берем первый кадр (#t=0.1)
+                const mediaTag = isVideo 
+                    ? `<video src="${url}#t=0.1" style="width:100%; height:100%; object-fit:cover; pointer-events: none;"></video>` 
+                    : `<img src="${url}" style="width:100%; height:100%; object-fit:cover; pointer-events: none;">`;
+                
+                const videoIcon = isVideo 
+                    ? `<div style="position:absolute; top:5px; right:5px; background:rgba(0,0,0,0.5); color:white; font-size:10px; width:20px; height:20px; border-radius:50%; display:flex; justify-content:center; align-items:center;">▶</div>` 
+                    : '';
+
+                cell.innerHTML = mediaTag + videoIcon;
+
+                // Клик по превьюшке открывает общую читалку
+                cell.onclick = () => {
+                    openGallery(encodeURIComponent(JSON.stringify(catalogGalleryMedia)), savedIndex);
+                };
+
+                sharedMediaGrid.appendChild(cell);
+                currentIndex++;
+            }
+        }
+    });
+
+    // Кнопка "Назад" из каталога медиа
+    document.getElementById('close-shared-media-btn').addEventListener('click', () => {
+        sharedMediaModal.style.display = 'none';
+    });
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ ---
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ВСЕ ФОРМАТЫ) ---
     function displayMessage(content, className, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false) {
