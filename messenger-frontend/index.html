@@ -216,11 +216,14 @@
     </ul>
 </div>
 
-<div class="sidebar" style="position: relative;">
-    <div class="sidebar-header">
+<div class="sidebar" style="position: relative; display: flex; flex-direction: column; height: 100vh;">
+    <div class="sidebar-header" style="flex-shrink: 0;">
         <button class="menu-btn" aria-label="Меню">☰</button>
         <input type="text" class="search-bar" placeholder="Поиск...">
     </div>
+    
+    <div id="chats-container" style="flex: 1; overflow-y: auto; padding-bottom: 80px;">
+        </div>
     
     <button id="sidebar-group-btn" title="Создать группу" style="position: absolute; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: var(--gradient-primary); color: white; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; padding: 0; margin: 0; transition: transform 0.2s;">
         <span style="margin-top: -2px;">+</span>
@@ -519,7 +522,12 @@
             groupControls.style.display = 'none';
             membersSection.style.display = 'none';
             avatar.style.borderRadius = "50%";
-            statusEl.textContent = "онлайн";
+            // Динамическая проверка статуса для профиля
+            statusEl.textContent = 'проверка...';
+            socket.emit('check_online_status', currentChatUser, (isOnline) => {
+                statusEl.textContent = isOnline ? 'онлайн' : 'был(а) недавно';
+                statusEl.style.color = isOnline ? 'var(--primary-color)' : 'var(--text-muted)';
+            });
             
             try {
                 let userData;
@@ -1153,10 +1161,11 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const groupsRes = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
             const myGroups = await groupsRes.json();
             
-            const sidebar = document.querySelector('.sidebar');
-            document.querySelectorAll('.sidebar .chat-mock').forEach(el => el.remove()); 
+                // ИСПРАВЛЕНИЕ: Очищаем именно контейнер для чатов
+            const chatsContainer = document.getElementById('chats-container');
+            chatsContainer.innerHTML = ''; 
             
-            // --- РЕНДЕРИМ ГРУППЫ И КАНАЛЫ ---
+            // Рендерим ГРУППЫ
             myGroups.forEach(group => {
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
@@ -1186,10 +1195,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 `;
                 
                 chatItem.addEventListener('click', () => openGroupChat(group));
-                sidebar.appendChild(chatItem);
+                chatsContainer.appendChild(chatItem); // Добавляем в контейнер
             });
 
-            // --- РЕНДЕРИМ ЛИЧНЫЕ ЧАТЫ ---
+            // Рендерим ЛИЧНЫЕ ЧАТЫ
             const usersToShow = allUsers.filter(user => 
                 user.username !== myUsername && 
                 (activeNames.includes(user.username) || user.username === currentChatUser)
@@ -1228,7 +1237,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 `;
                 
                 chatItem.addEventListener('click', () => openChatWith(user));
-                sidebar.appendChild(chatItem);
+                chatsContainer.appendChild(chatItem); // Добавляем в контейнер
             });
         } catch (error) {
             console.error("❌ Ошибка загрузки чатов:", error);
@@ -2391,21 +2400,22 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
     // 4. Следим за общим онлайном друзей
     socket.on('user_status_change', (data) => {
-        // Обновляем шапку, только если открыт ЛИЧНЫЙ чат с этим человеком
+        // 1. Обновляем шапку чата
         if (!currentChatIsGroup && currentChatUser === data.username) {
             const statusEl = document.querySelector('.chat-status');
-            if (data.isOnline) {
-                statusEl.textContent = 'онлайн';
-                statusEl.style.color = 'var(--primary-color)';
-                originalStatusText = 'онлайн'; // Обновляем сохраненный статус
-            } else {
-                statusEl.textContent = 'был(а) недавно';
-                statusEl.style.color = 'var(--text-muted)';
-                originalStatusText = 'был(а) недавно';
+            const statusText = data.isOnline ? 'онлайн' : 'был(а) недавно';
+            statusEl.textContent = statusText;
+            statusEl.style.color = data.isOnline ? 'var(--primary-color)' : 'var(--text-muted)';
+            originalStatusText = statusText;
+
+            // 2. Обновляем статус в окне профиля (если оно открыто)
+            const infoStatusEl = document.getElementById('info-status');
+            if (chatInfoModal.style.display === 'flex') {
+                infoStatusEl.textContent = statusText;
+                infoStatusEl.style.color = data.isOnline ? 'var(--primary-color)' : 'var(--text-muted)';
             }
         }
     });
-
     // --- 3. ОТПРАВКА ОБЫЧНОГО СООБЩЕНИЯ ---
     async function sendMessage() {
         const text = messageInput.value.trim();

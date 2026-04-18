@@ -657,3 +657,30 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
 #sidebar-group-btn:active {
     transform: scale(0.95);
 }
+
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden; /* Запрещаем общий скролл сайдбара */
+}
+
+.sidebar-header {
+    flex-shrink: 0; /* Шапка поиска не сжимается */
+}
+
+/* Контейнер для списка чатов */
+#chats-container {
+    flex: 1;
+    overflow-y: auto; /* Разрешаем скролл только списку */
+    padding-bottom: 80px; /* Место под кнопку + */
+}
+
+/* Стилизация скроллбара (опционально, для красоты) */
+#chats-container::-webkit-scrollbar {
+    width: 4px;
+}
+#chats-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+}
