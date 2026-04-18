@@ -2618,16 +2618,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         el.onmouseover = () => el.style.transform = 'scale(1.3)';
         el.onmouseout = () => el.style.transform = 'scale(1)';
         el.onclick = () => {
-            span.onclick = () => {
             socket.emit('send_reaction', {
                 messageId: selectedMessageId,
-                emoji: e,
+                emoji: el.textContent, // Берем сам смайлик прямо из нажатой кнопки
                 username: myUsername,
                 isGroup: currentChatIsGroup,
                 chatId: currentChatUser
             });
             closeMsgMenu();
-        };
         };
     });
 
