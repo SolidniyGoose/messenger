@@ -2311,7 +2311,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             let innerContent = content;
             
             if (isAudio) {
-                innerContent = `<audio controls style="max-width: 220px; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
+                // Добавили width и max-width: 100% для адаптивности плеера
+                innerContent = `<audio controls style="width: 280px; max-width: 100%; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
             } else if (isAlbum) {
                 const mediaItems = content; 
                 const encodedMediaString = encodeURIComponent(JSON.stringify(mediaItems)); 
@@ -2333,7 +2334,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 });
                 
                 const columns = mediaItems.length === 1 ? '1fr' : 'repeat(2, 1fr)';
-                innerContent = `<div style="display: grid; grid-template-columns: ${columns}; gap: 4px; width: 240px; border-radius: 8px; overflow: hidden; margin-bottom: 5px;">${gridHtml}</div>`;
+                // ИСПРАВЛЕНИЕ АЛЬБОМА: width: 320px; max-width: 100%;
+                innerContent = `<div style="display: grid; grid-template-columns: ${columns}; gap: 4px; width: 320px; max-width: 100%; border-radius: 8px; overflow: hidden; margin-bottom: 5px;">${gridHtml}</div>`;
             } else if (isImage) {
                 innerContent = `<img src="${content}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" onclick="openGallery('${content}', 0)" />`;
             } else if (fileName) {
