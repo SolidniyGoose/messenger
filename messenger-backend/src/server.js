@@ -7,6 +7,26 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient(); 
 
 const app = express();
+
+// --- 🛡️ НАСТРОЙКА БЕЗОПАСНОСТИ (CSP) ---
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            // Разрешаем скрипты только с нашего сайта и CDN для Socket.io. 
+            // 'unsafe-inline' нужен, так как у нас скрипты написаны прямо внутри index.html
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.socket.io"], 
+            // Разрешаем стили из файлов и внутри тегов
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            // Разрешаем загрузку картинок и видео (blob: нужен для расшифрованных медиафайлов!)
+            imgSrc: ["'self'", "data:", "blob:"],
+            mediaSrc: ["'self'", "blob:"],
+            // Разрешаем подключаться по WebSockets
+            connectSrc: ["'self'", "ws:", "wss:"], 
+        },
+    }
+}));
+
 const server = http.createServer(app);
 
 app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));

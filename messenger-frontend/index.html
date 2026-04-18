@@ -709,7 +709,10 @@
         const decryptedBuffer = await decryptMessage(box, key);
         if (!decryptedBuffer) return null;
 
-        const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+        // Внутри логики скачивания: если это обычный файл, заставляем браузер скачивать его, а не открывать
+        const safeType = (box.type === 'FILE') ? 'application/octet-stream' : box.mimeType;
+        const blob = new Blob([decryptedBuffer], { type: safeType }); // Принудительное скачивание
+        
         const url = URL.createObjectURL(blob);
         
         // Сохраняем в кэш для будущих открытий
@@ -3338,7 +3341,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     const url = URL.createObjectURL(blob);
                     displayMessage(url, type, payload.sender, new Date(), false, '', false, false, true, payload.id, box.replyTo);
                 } else {
-                    const blob = new Blob([decryptedBuffer], { type: box.mimeType });
+                    // Внутри логики скачивания файла
+                    const safeType = (box.type === 'FILE') ? 'application/octet-stream' : box.mimeType;
+                    const blob = new Blob([decryptedBuffer], { type: safeType }); // Принудительное скачивание
+                    
                     const fileUrl = URL.createObjectURL(blob);
                     displayMessage(fileUrl, type, payload.sender, new Date(), box.type === 'IMAGE', box.fileName, false, false, false, payload.id, box.replyTo);
                 }
