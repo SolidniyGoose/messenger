@@ -856,6 +856,7 @@
                             const text = escapeHTML(bufferToText(decryptedBuffer));
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
                             displayMessage(displayText, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
+                            if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                         }
                     } else if (box.type === 'ALBUM') {
                         // --- РАСШИФРОВКА АЛЬБОМА ---
@@ -866,6 +867,7 @@
                                 mediaUrls.push({ url: url, type: imgBox.mimeType }); 
                         }
                         displayMessage(mediaUrls, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
+                        if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                     } else {
                         // --- ИСПОЛЬЗУЕМ КЭШ ДЛЯ ТЯЖЕЛЫХ ФАЙЛОВ ---
                         const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
@@ -873,10 +875,13 @@
                         if (mediaUrl) {
                             if (box.type === 'AUDIO') {
                                 displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo);
+                                if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                             } else if (box.type === 'VIDEO_CIRCLE') {
                                 displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo);
+                                if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                             } else {
                                 displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
+                                if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                             }
                         }
                     }
@@ -943,6 +948,7 @@
                 // Функция-обертка, чтобы добавить кнопку "Комментарии"
                 const renderWithCommentBtn = (contentHtml, senderName, type, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum) => {
                     displayMessage(contentHtml, type, senderName, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum);
+                    if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                     
                     // Если мы в режиме канала и это пост - приклеиваем под него кнопку
                     if (currentGroupData && currentGroupData.isChannel && currentChannelView === 'main' && !box.isComment) {
@@ -2334,7 +2340,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 innerContent = content; 
             }
 
-            msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${timeString}${statusHtml}</span>`;
+            // В конце формирования innerHTML добавьте это:
+            const reactionsHtml = `<div class="reactions-holder" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;"></div>`;
+            msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${timeString}${statusHtml}</span>${reactionsHtml}`;
         }
 
         // Собираем всё в обертку
@@ -2561,20 +2569,65 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         span.onmouseover = () => span.style.transform = 'scale(1.3)';
         span.onmouseout = () => span.style.transform = 'scale(1)';
         span.onclick = () => {
-            console.log("Реакция выбрана:", e, "для сообщения", selectedMessageId);
+            socket.emit('send_reaction', {
+                messageId: selectedMessageId,
+                emoji: e,
+                username: myUsername,
+                isGroup: currentChatIsGroup,
+                chatId: currentChatUser
+            });
             closeMsgMenu();
-            // Позже мы добавим сюда отправку реакции на сервер
         };
         allEmojisContainer.appendChild(span);
     });
+
+    function renderReactions(messageId, reactions) {
+        const msgEl = document.getElementById(`msg-${messageId}`);
+        if (!msgEl) return;
+        
+        const holder = msgEl.querySelector('.reactions-holder');
+        if (!holder) return;
+        
+        holder.innerHTML = '';
+        
+        Object.entries(reactions).forEach(([emoji, users]) => {
+            if (users.length === 0) return;
+            
+            const re = document.createElement('div');
+            const isMy = users.includes(myUsername);
+            
+            re.style.cssText = `
+                background: ${isMy ? 'rgba(0,120,255,0.15)' : 'rgba(0,0,0,0.05)'};
+                border: 1px solid ${isMy ? 'var(--primary-color)' : 'transparent'};
+                padding: 2px 6px; border-radius: 10px; font-size: 13px; cursor: pointer;
+                display: flex; align-items: center; gap: 4px; transition: 0.2s;
+            `;
+            re.innerHTML = `${emoji} <span style="font-size: 11px; font-weight: bold;">${users.length}</span>`;
+            
+            re.onclick = (e) => {
+                e.stopPropagation();
+                socket.emit('send_reaction', { messageId, emoji, username: myUsername, isGroup: currentChatIsGroup, chatId: currentChatUser });
+            };
+            
+            holder.appendChild(re);
+        });
+    }
 
     // 3. АНИМАЦИИ ДЛЯ БЫСТРЫХ ЭМОДЗИ
     document.querySelectorAll('.quick-emoji').forEach(el => {
         el.onmouseover = () => el.style.transform = 'scale(1.3)';
         el.onmouseout = () => el.style.transform = 'scale(1)';
         el.onclick = () => {
-            console.log("Быстрая реакция:", el.textContent);
+            span.onclick = () => {
+            socket.emit('send_reaction', {
+                messageId: selectedMessageId,
+                emoji: e,
+                username: myUsername,
+                isGroup: currentChatIsGroup,
+                chatId: currentChatUser
+            });
             closeMsgMenu();
+        };
         };
     });
 
@@ -2660,6 +2713,16 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         // --- НОВОЕ: ВЫЧИЩАЕМ ИЗ КЭША ---
         APP_CACHE.history.forEach((historyArray, key) => {
             APP_CACHE.history.set(key, historyArray.filter(msg => msg.id !== msgId));
+        });
+    });
+
+    socket.on('reaction_updated', ({ messageId, reactions }) => {
+        renderReactions(messageId, reactions);
+        
+        // Обновляем кэш, чтобы реакции не пропадали при переключении чатов
+        APP_CACHE.history.forEach(history => {
+            const msg = history.find(m => m.id === messageId);
+            if (msg) msg.reactions = reactions;
         });
     });
 

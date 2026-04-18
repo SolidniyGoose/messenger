@@ -156,6 +156,47 @@ module.exports = (io) => {
                 }
             } catch (e) { console.error("Ошибка при удалении сообщения:", e); }
         });
+        // --- ЛОГИКА РЕАКЦИЙ ---
+        socket.on('send_reaction', async ({ messageId, emoji, username, isGroup, chatId }) => {
+            try {
+                const message = await prisma.message.findUnique({ where: { id: messageId } });
+                if (!message) return;
+
+                let reactions = message.reactions || {};
+                if (typeof reactions === 'string') reactions = JSON.parse(reactions);
+
+                // Если юзер уже ставил этот эмодзи — убираем (Toggle), если нет — добавляем
+                if (!reactions[emoji]) reactions[emoji] = [];
+                
+                if (reactions[emoji].includes(username)) {
+                    reactions[emoji] = reactions[emoji].filter(u => u !== username);
+                    if (reactions[emoji].length === 0) delete reactions[emoji];
+                } else {
+                    reactions[emoji].push(username);
+                }
+
+                // Сохраняем в базу
+                await prisma.message.update({
+                    where: { id: messageId },
+                    data: { reactions: reactions }
+                });
+
+                // Рассылаем обновление всем участникам
+                if (isGroup) {
+                    const group = await prisma.group.findUnique({ where: { id: chatId }, include: { members: true } });
+                    group?.members.forEach(m => {
+                        const sId = onlineUsers.get(m.username);
+                        if (sId) io.to(sId).emit('reaction_updated', { messageId, reactions });
+                    });
+                } else {
+                    // В личке отправляем обоим
+                    [username, chatId].forEach(user => {
+                        const sId = onlineUsers.get(user);
+                        if (sId) io.to(sId).emit('reaction_updated', { messageId, reactions });
+                    });
+                }
+            } catch (e) { console.error("Ошибка реакции:", e); }
+        });
 
         // --- НОВОЕ: ОБРАБОТКА ПРОЧИТАННЫХ СООБЩЕНИЙ ---
         socket.on('mark_read', async ({ sender, recipient }) => {
