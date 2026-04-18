@@ -221,6 +221,16 @@
 </div>
 
 <style> 
+    /* ИСПРАВЛЕНИЕ ДЛЯ ТЕЛЕФОНОВ: Скрываем сайдбар, когда чат активен */
+    @media (max-width: 768px) {
+        body.mobile-chat-active .sidebar {
+            display: none !important;
+        }
+        body.mobile-chat-active .chat-area {
+            display: flex !important;
+            width: 100% !important;
+        }
+    }
     @keyframes fadeInMenu { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } } 
     @keyframes fadeOutMenu { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.9); } } 
 </style>
@@ -1232,7 +1242,11 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             // Рендерим ЛИЧНЫЕ ЧАТЫ
             const usersToShow = allUsers.filter(user => 
                 user.username !== myUsername && 
-                (activeNames.includes(user.username) || user.username === currentChatUser)
+                (
+                    activeNames.includes(user.username) || 
+                    user.username === currentChatUser || 
+                    APP_CACHE.history.has(`chat_${user.username}`) // <--- СПАСИТЕЛЬНАЯ СТРОЧКА!
+                )
             );
             
             usersToShow.forEach(user => {
