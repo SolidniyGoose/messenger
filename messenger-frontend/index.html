@@ -2356,8 +2356,16 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             // Высчитываем позицию (меню стало шире и выше, поэтому корректируем отступы)
             let menuX = x;
             let menuY = y;
-            if (menuX + 230 > window.innerWidth) menuX = window.innerWidth - 240; 
-            if (menuY + 300 > window.innerHeight) menuY = window.innerHeight - 310; // Поднимаем выше, если упирается в низ
+            
+            // Если клик был близко к правому краю экрана (наши исходящие сообщения) - сдвигаем меню влево
+            if (menuX + 280 > window.innerWidth) {
+                menuX = Math.max(10, window.innerWidth - 280); // Math.max(10) не даст меню улететь за левый край на телефонах
+            }
+            
+            // Если клик был слишком низко - поднимаем меню
+            if (menuY + 380 > window.innerHeight) {
+                menuY = Math.max(10, window.innerHeight - 380); 
+            }
 
             msgCtxMenu.style.left = menuX + 'px';
             msgCtxMenu.style.top = menuY + 'px';
@@ -2521,7 +2529,12 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     }
 
     msgCtxBackdrop.addEventListener('click', closeMsgMenu);
-    window.addEventListener('wheel', () => { if (msgCtxMenu.style.display === 'flex') closeMsgMenu(); });
+    window.addEventListener('wheel', (e) => { 
+        // Если меню открыто, и мы крутим колесико НЕ внутри самого меню (например, чтобы полистать чат) - закрываем его
+        if (msgCtxMenu.style.display === 'flex' && !msgCtxMenu.contains(e.target)) {
+            closeMsgMenu(); 
+        }
+    });
 
     // 2. ГЕНЕРАЦИЯ КАТАЛОГА ЭМОДЗИ
     const allEmojisList = ['😀','😃','😄','😁','😆','😅','😂','🤣','🥲','☺️','😊','😇','🙂','🙃','😉','😌','😍','🥰','😘','😗','😙','😚','😋','😛','😝','😜','🤪','🤨','🧐','🤓','😎','🥸','🤩','🥳','😏','😒','😞','😔','😟','😕','🙁','☹️','😣','😖','😫','😩','🥺','😢','😭','😤','😠','😡','🤬','🤯','😳','🥵','🥶','😱','😨','😰','😥','😓','🤗','🤔','🫣','🤭','🫢','🫡','🤫','🫠','🤥','😶','🫥','😐','🫤','😑','😬','🙄','😯','😦','😧','😮','😲','🥱','😴','🤤','😪','😮‍💨','😵','😵‍💫','🤐','🥴','🤢','🤮','🤧','😷','🤒','🤕','🤑','🤠','😈','👿','👍','👎','✌️','🤞','🤝','🙏'];
