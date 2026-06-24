@@ -375,6 +375,10 @@
     const menuBtn = document.querySelector('.menu-btn');
     const drawer = document.getElementById('drawer');
     const backdrop = document.getElementById('backdrop');
+
+    // --- ПАГИНАЦИЯ ---
+    let isFetchingHistory = false;
+    let currentChatHasMore = true; // Есть ли еще старые сообщения на сервере
     
     const themeToggle = document.getElementById('theme-toggle');
     const themeIcon = document.getElementById('theme-icon');
@@ -838,9 +842,11 @@
             if (APP_CACHE.history.has(cacheKey)) {
                 history = APP_CACHE.history.get(cacheKey); // Берем из памяти (0 трафика!)
             } else {
-                const histRes = await fetch(`/api/history/${myUsername}/${user.username}`);
+                currentChatHasMore = true; // Сбрасываем флаг при открытии чата
+                // ЗАПРАШИВАЕМ ТОЛЬКО ПОСЛЕДНИЕ 30 СООБЩЕНИЙ
+                const histRes = await fetch(`/api/history/${myUsername}/${user.username}?limit=30&offset=0`);
                 history = await histRes.json();
-                APP_CACHE.history.set(cacheKey, history); // Сохраняем на будущее
+                APP_CACHE.history.set(cacheKey, history); 
             }
 
             const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
@@ -1112,7 +1118,8 @@
         // --- 5. ЗАГРУЗКА ИСТОРИИ В КЭШ ---
         const cacheKey = `group_${group.id}`;
         if (!APP_CACHE.history.has(cacheKey)) {
-            const histRes = await fetch(`/api/history/group/${group.id}`);
+            currentChatHasMore = true;
+            const histRes = await fetch(`/api/history/group/${group.id}?limit=30&offset=0`);
             const history = await histRes.json();
             APP_CACHE.history.set(cacheKey, history);
         }
@@ -2222,8 +2229,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     });
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ВСЕ ФОРМАТЫ) ---
     // ИСПРАВЛЕНИЕ: Добавили параметр senderName для отрисовки аватарок
-    function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false) {
-        const msgDiv = document.createElement('div');
+// ИСПРАВЛЕНИЕ: Добавили параметр prepend = false в конец
+    function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false, prepend = false) {        const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         
         // Обертка для сообщения и аватарки (Flexbox)
@@ -2404,9 +2411,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         msgDiv.addEventListener('touchmove', () => clearTimeout(pressTimer));
 
         // Добавляем ОБЕРТКУ в список сообщений
-        messagesList.appendChild(wrapperDiv);
-        messagesList.scrollTop = messagesList.scrollHeight;
-    }
+        if (prepend) {
+            // Вставляем В НАЧАЛО (для старых сообщений при скролле)
+            messagesList.prepend(wrapperDiv);
+        } else {
+            // Стандартное поведение: Вставляем В КОНЕЦ
+            messagesList.appendChild(wrapperDiv);
+            messagesList.scrollTop = messagesList.scrollHeight;
+        }
+    } // Конец функции displayMessage
 
     // --- ЛОГИКА ОНЛАЙНА И ИНДИКАТОРА "ПЕЧАТАЕТ..." ---
     let typingTimer;                 // Таймер для отправки 'stop_typing'
@@ -3380,6 +3393,103 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         localStorage.clear();
         // Перезагружаем страницу (покажется окно входа)
         location.reload();
+    });
+
+    // --- ЛОГИКА БЕСКОНЕЧНОГО СКРОЛЛА (ПАГИНАЦИЯ) ---
+    document.getElementById('messages-list').addEventListener('scroll', async function() {
+        // Если мы докрутили до верха, сейчас ничего не грузится, и на сервере еще есть история
+        if (this.scrollTop === 0 && !isFetchingHistory && currentChatHasMore && currentChatUser) {
+            isFetchingHistory = true;
+
+            const cacheKey = currentChatIsGroup ? `group_${currentChatUser}` : `chat_${currentChatUser}`;
+            const currentHistory = APP_CACHE.history.get(cacheKey) || [];
+            
+            // Наш текущий сдвиг - это ровно то количество сообщений, которое уже есть в локальном кэше!
+            const offset = currentHistory.length; 
+
+            // Показываем красивый лоадер загрузки
+            const loader = document.createElement('div');
+            loader.id = 'history-loader';
+            loader.style.cssText = "text-align: center; padding: 15px; color: var(--primary-color); font-size: 13px; font-weight: 500;";
+            loader.textContent = 'Расшифровываем старые сообщения...';
+            this.prepend(loader);
+
+            // ЗАПОМИНАЕМ ВЫСОТУ, чтобы чат не прыгнул, когда мы вставим 30 новых блоков сверху
+            const oldScrollHeight = this.scrollHeight;
+
+            try {
+                const url = currentChatIsGroup
+                    ? `/api/history/group/${currentChatUser}?limit=30&offset=${offset}`
+                    : `/api/history/${myUsername}/${currentChatUser}?limit=30&offset=${offset}`;
+
+                const res = await fetch(url);
+                const olderMessages = await res.json();
+
+                // Если сервер вернул меньше 30, значит мы дошли до самого начала истории (Рождение чата)
+                if (olderMessages.length < 30) {
+                    currentChatHasMore = false;
+                }
+
+                document.getElementById('history-loader')?.remove();
+
+                if (olderMessages.length > 0) {
+                    // 1. Добавляем старые сообщения в НАЧАЛО нашего локального кэша
+                    APP_CACHE.history.set(cacheKey, [...olderMessages, ...currentHistory]);
+                    const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
+
+                    // 2. Отрисовываем и добавляем в НАЧАЛО DOM-дерева
+                    // ВАЖНО: Идем циклом с КОНЦА МАССИВА (i--), чтобы хронология собралась правильно (старые над более новыми)
+                    for (let i = olderMessages.length - 1; i >= 0; i--) {
+                        let msg = olderMessages[i];
+                        if (deletedLocally.includes(msg.id)) continue;
+
+                        try {
+                            const box = typeof msg.secretBox === 'string' ? JSON.parse(msg.secretBox) : msg.secretBox;
+                            const type = msg.sender === myUsername ? 'my-message' : 'other-message';
+                            const senderPrefix = (currentChatIsGroup && type === 'other-message') ? `<b style="color: var(--primary-color); font-size: 13px;">${escapeHTML(msg.sender)}:</b><br>` : '';
+
+                            // Функция-помощник для отрисовки с флагом PREPEND = TRUE
+                            const renderPrepended = (contentHtml, isImage, fileName, isAudio, isCircle, isAlbum) => {
+                                displayMessage(contentHtml, type, msg.sender, new Date(msg.createdAt), isImage, fileName, msg.isRead, isAudio, isCircle, msg.id, box.replyTo, isAlbum, true); // <--- TRUE!
+                                if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
+                            };
+
+                            // --- РАСШИФРОВКА "НА ЛЕТУ" ---
+                            if (!box.type || box.type === 'TEXT') {
+                                const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                                if (decryptedBuffer) {
+                                    const text = escapeHTML(bufferToText(decryptedBuffer));
+                                    const displayText = type === 'other-message' ? senderPrefix + text : text;
+                                    renderPrepended(displayText, false, '', false, false, false);
+                                }
+                            } else if (box.type === 'ALBUM') {
+                                const mediaUrls = [];
+                                for (let imgBox of box.images) {
+                                    const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
+                                    if (url) mediaUrls.push({ url: url, type: imgBox.mimeType });
+                                }
+                                renderPrepended(mediaUrls, false, '', false, false, true);
+                            } else {
+                                const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
+                                if (mediaUrl) {
+                                    if (box.type === 'AUDIO') renderPrepended(mediaUrl, false, '', true, false, false);
+                                    else if (box.type === 'VIDEO_CIRCLE') renderPrepended(mediaUrl, false, '', false, true, false);
+                                    else renderPrepended(mediaUrl, box.type === 'IMAGE', box.fileName, false, false, false);
+                                }
+                            }
+                        } catch (err) { console.error("Ошибка при расшифровке архива:", err); }
+                    }
+
+                    // 3. ВОЗВРАЩАЕМ СКРОЛЛ НА МЕСТО (Компенсируем вставку новых блоков)
+                    this.scrollTop = this.scrollHeight - oldScrollHeight;
+                }
+            } catch (err) {
+                console.error("Ошибка подгрузки:", err);
+                document.getElementById('history-loader')?.remove();
+            }
+
+            isFetchingHistory = false;
+        }
     });
 </script>
 </body>

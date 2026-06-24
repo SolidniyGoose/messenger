@@ -36,28 +36,33 @@ app.use(express.json({ limit: '50mb' }));
 const usersRoutes = require('./routes/users');
 app.use('/api/users', usersRoutes);
 
-// --- ЭНДПОИНТ ДЛЯ ИСТОРИИ ГРУППОВОГО ЧАТА ---
+// --- ЭНДПОИНТ ДЛЯ ИСТОРИИ ГРУППОВОГО ЧАТА (С ПАГИНАЦИЕЙ) ---
 app.get('/api/history/group/:groupId', async (req, res) => {
     const { groupId } = req.params;
-    console.log(`[API ИСТОРИЯ] Запрошена история для группы: ${groupId}`); // <--- СЛЕЖКА
-    
+    const limit = parseInt(req.query.limit) || 30;   // Сколько сообщений отдавать (по умолчанию 30)
+    const offset = parseInt(req.query.offset) || 0;  // Сколько пропустить с конца
+
     try {
         const messages = await prisma.message.findMany({
             where: { groupId: groupId },
-            orderBy: { createdAt: 'asc' }
+            orderBy: { createdAt: 'desc' }, // Берем с КОНЦА (самые свежие из старых)
+            take: limit,
+            skip: offset
         });
         
-        console.log(`[API ИСТОРИЯ] Успех! Найдено сообщений в базе: ${messages.length}`); // <--- СЛЕЖКА
-        res.json(messages);
+        res.json(messages.reverse()); // Переворачиваем обратно, чтобы хронология была правильной (старые сверху)
     } catch (error) { 
-        console.error("❌ [API ИСТОРИЯ] КРИТИЧЕСКАЯ ОШИБКА PRISMA:", error); // <--- СЛЕЖКА
+        console.error("❌ Ошибка истории группы:", error); 
         res.status(500).json([]); 
     }
 });
 
-// --- ИСТОРИЯ ЧАТОВ (То, что мы забыли добавить) ---
+// --- ИСТОРИЯ ЛИЧНЫХ ЧАТОВ (С ПАГИНАЦИЕЙ) ---
 app.get('/api/history/:user1/:user2', async (req, res) => {
     const { user1, user2 } = req.params;
+    const limit = parseInt(req.query.limit) || 30;
+    const offset = parseInt(req.query.offset) || 0;
+
     try {
         const messages = await prisma.message.findMany({
             where: {
@@ -66,9 +71,11 @@ app.get('/api/history/:user1/:user2', async (req, res) => {
                     { sender: user2, recipient: user1 }
                 ]
             },
-            orderBy: { createdAt: 'asc' } 
+            orderBy: { createdAt: 'desc' }, // Берем с КОНЦА
+            take: limit,
+            skip: offset
         });
-        res.json(messages);
+        res.json(messages.reverse());
     } catch (error) {
         res.status(500).json({ error: "Ошибка загрузки истории" });
     }
