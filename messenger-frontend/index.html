@@ -4199,7 +4199,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const { token } = await res.json();
             
             let e2eeConfig = undefined;
-            if (currentSharedKey && LivekitClient.supportsE2EE()) {
+            if (currentSharedKey) {
                 const keyProvider = new LivekitClient.ExternalE2EEKeyProvider();
                 const keyHex = Array.from(currentSharedKey).map(b => b.toString(16).padStart(2,'0')).join('');
                 await keyProvider.setKey(keyHex); 
