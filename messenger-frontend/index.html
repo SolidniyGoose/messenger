@@ -1107,7 +1107,7 @@
                     if (decryptedBuffer) {
                         const text = escapeHTML(bufferToText(decryptedBuffer));
                         const displayText = type === 'other-message' ? senderPrefix + text : text;
-                        renderWithCommentBtn(displayText, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, false, msg.isEdited);
+                        renderWithCommentBtn(displayText, msg.sender, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, false, msg.isEdited);
                     }
                 } else if (box.type === 'ALBUM') {
                     const mediaUrls = [];
@@ -1115,16 +1115,16 @@
                         const url = await getDecryptedMediaUrl(imgBox, currentSharedKey);
                         if (url) mediaUrls.push({ url: url, type: imgBox.mimeType }); 
                     }
-                    renderWithCommentBtn(mediaUrls, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
+                    renderWithCommentBtn(mediaUrls, msg.sender, type, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
                 } else {
                     const mediaUrl = await getDecryptedMediaUrl(box, currentSharedKey);
                     if (mediaUrl) {
                         if (box.type === 'AUDIO') {
-                            renderWithCommentBtn(mediaUrl, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo); 
+                            renderWithCommentBtn(mediaUrl, msg.sender, type, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo); 
                         } else if (box.type === 'VIDEO_CIRCLE') {
-                            renderWithCommentBtn(mediaUrl, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo); 
+                            renderWithCommentBtn(mediaUrl, msg.sender, type, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo); 
                         } else {
-                            renderWithCommentBtn(mediaUrl, type, senderName, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
+                            renderWithCommentBtn(mediaUrl, msg.sender, type, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
                         }
                     }
                 }
@@ -1383,6 +1383,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     async function renderChatPreview(previewContainer, timeContainer, badgeContainer, cacheKey, isGroup) {
         try {
             const history = APP_CACHE.history.get(cacheKey) || [];
+            const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
             let text = 'сообщений нет';
             let timeStr = '';
             let unreadCount = 0;
