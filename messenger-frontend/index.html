@@ -61,6 +61,17 @@
         <button id="confirm-group-btn" style="display: none; margin-top: 15px; padding: 12px; background: var(--gradient-primary); color: white; border: none; border-radius: 12px; cursor: pointer; font-weight: bold;">Создать группу</button>
     </div>
 </div>
+<div id="forward-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 5000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
+    <div style="background: var(--bg-sidebar); width: 90%; max-width: 400px; border-radius: 20px; padding: 20px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h3 style="margin: 0; color: var(--text-main);">Переслать сообщение</h3>
+            <button id="close-forward-btn" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</button>
+        </div>
+        <div id="forward-chats-list" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
+            <!-- Список чатов для пересылки -->
+        </div>
+    </div>
+</div>
 <div id="profile-edit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3001; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
     <div style="background: var(--bg-sidebar); width: 90%; max-width: 350px; border-radius: 20px; padding: 25px; display: flex; flex-direction: column; align-items: center; box-shadow: var(--shadow-md);">
         <h3 style="margin: 0 0 20px 0; color: var(--text-main);">Редактировать профиль</h3>
@@ -209,7 +220,10 @@
             <span style="font-size: 18px;">✏️</span> Изменить
         </button>
         <button id="ctx-reply-btn" style="width: 100%; padding: 12px 20px; background: transparent; border: none; color: var(--text-main); font-size: 14px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.1s;" onmouseover="this.style.background='rgba(128,128,128,0.2)'" onmouseout="this.style.background='transparent'">
-            <span style="font-size: 18px;">↩️</span> Ответить (проверка)
+            <span style="font-size: 18px;">↩️</span> Ответить
+        </button>
+        <button id="ctx-forward-btn" style="width: 100%; padding: 12px 20px; background: transparent; border: none; color: var(--text-main); font-size: 14px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.1s;" onmouseover="this.style.background='rgba(128,128,128,0.2)'" onmouseout="this.style.background='transparent'">
+            <span style="font-size: 18px;">↪️</span> Переслать
         </button>
         <button id="ctx-copy-btn" style="width: 100%; padding: 12px 20px; background: transparent; border: none; color: var(--text-main); font-size: 14px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.1s;" onmouseover="this.style.background='rgba(128,128,128,0.2)'" onmouseout="this.style.background='transparent'">
             <span style="font-size: 18px;">📋</span> Копировать
@@ -875,7 +889,7 @@
                         if (decryptedBuffer) {
                             const text = escapeHTML(bufferToText(decryptedBuffer));
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
-                            displayMessage(displayText, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, false, false, msg.isEdited);
+                            displayMessage(displayText, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, false, false, msg.isEdited, box.forwardedFrom);
                             if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                         }
                     } else if (box.type === 'ALBUM') {
@@ -886,7 +900,7 @@
                             if (url) // ИСПРАВЛЕНО: Передаем только правильный url
                                 mediaUrls.push({ url: url, type: imgBox.mimeType }); 
                         }
-                        displayMessage(mediaUrls, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true);
+                        displayMessage(mediaUrls, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, true, false, msg.isEdited, box.forwardedFrom);
                         if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                     } else {
                         // --- ИСПОЛЬЗУЕМ КЭШ ДЛЯ ТЯЖЕЛЫХ ФАЙЛОВ ---
@@ -894,13 +908,13 @@
                         
                         if (mediaUrl) {
                             if (box.type === 'AUDIO') {
-                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo);
+                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo, false, false, msg.isEdited, box.forwardedFrom);
                                 if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                             } else if (box.type === 'VIDEO_CIRCLE') {
-                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo);
+                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo, false, false, msg.isEdited, box.forwardedFrom);
                                 if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                             } else {
-                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo);
+                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), box.type === 'IMAGE', box.fileName, msg.isRead, false, false, msg.id, box.replyTo, false, false, msg.isEdited, box.forwardedFrom);
                                 if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                             }
                         }
@@ -2241,7 +2255,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ВСЕ ФОРМАТЫ) ---
     // ИСПРАВЛЕНИЕ: Добавили параметр senderName для отрисовки аватарок
 // ИСПРАВЛЕНИЕ: Добавили параметр prepend = false в конец
-    function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false, prepend = false, isEdited = false) {        const msgDiv = document.createElement('div');
+    function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false, prepend = false, isEdited = false, forwardedFrom = null) {
+        const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         
         // Обертка для сообщения и аватарки (Flexbox)
@@ -2290,6 +2305,16 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             </div>`;
         }
 
+        let forwardedHtml = '';
+        if (forwardedFrom) {
+            forwardedHtml = `
+            <div style="font-size: 11px; color: var(--primary-color); margin-bottom: 5px; font-weight: 500; display: flex; align-items: center; gap: 4px;">
+                <span style="font-size: 14px;">↪️</span> Переслано от: ${escapeHTML(forwardedFrom)}
+            </div>`;
+        }
+        
+        const topHtml = forwardedHtml + replyHtml;
+
         // === БРОНЕБОЙНАЯ ОТРИСОВКА КРУЖОЧКОВ ===
         if (isCircleVideo) {
             msgDiv.style.background = 'transparent';
@@ -2299,7 +2324,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             msgDiv.style.maxWidth = '180px';
             msgDiv.style.height = '180px';
 
-            msgDiv.innerHTML = `${replyHtml}
+            msgDiv.innerHTML = `${topHtml}
                 <div style="position: relative; width: 100%; height: 100%;">
                     <video src="${content}" class="circle-video-player" playsinline autoplay loop muted style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; box-shadow: 0 4px 12px rgba(0,0,0,0.3); cursor: pointer; display: block; background: #000;"></video>
                     <div style="position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.4); color: white; padding: 3px 8px; border-radius: 12px; font-size: 11px; display: flex; align-items: center; gap: 4px; z-index: 2; backdrop-filter: blur(4px);">
@@ -2366,7 +2391,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             // В конце формирования innerHTML добавьте это:
             const reactionsHtml = `<div class="reactions-holder" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;"></div>`;
             const editedHtml = isEdited ? `<span style="font-size: 10px; margin-right: 4px; opacity: 0.7;">(изменено)</span>` : '';
-            msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${editedHtml}${timeString}${statusHtml}</span>${reactionsHtml}`;
+            msgDiv.innerHTML = `${topHtml}${innerContent} <span class="meta">${editedHtml}${timeString}${statusHtml}</span>${reactionsHtml}`;
         }
 
         // Собираем всё в обертку
@@ -2719,7 +2744,189 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         messageInput.focus();
     });
 
-    // Кнопка "Изменить"
+    // Кнопка "Переслать"
+    let messageToForward = null;
+    document.getElementById('ctx-forward-btn').addEventListener('click', () => {
+        messageToForward = selectedMessageId;
+        closeMsgMenu();
+        openForwardModal();
+    });
+
+    // Логика Модалки Пересылки
+    const forwardModal = document.getElementById('forward-modal');
+    document.getElementById('close-forward-btn').addEventListener('click', () => {
+        forwardModal.style.display = 'none';
+        messageToForward = null;
+    });
+
+    async function openForwardModal() {
+        forwardModal.style.display = 'flex';
+        const listEl = document.getElementById('forward-chats-list');
+        listEl.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Загрузка...</div>';
+        
+        try {
+            // Получаем все активные чаты (группы и личные)
+            const usersRes = await fetch('/api/users?_t=' + Date.now());
+            const allUsers = await usersRes.json();
+            
+            const activeRes = await fetch(`/api/users/${myUsername}/chats?_t=` + Date.now());
+            const personalChats = await activeRes.json();
+            
+            const groupsRes = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
+            const groups = await groupsRes.json();
+
+            listEl.innerHTML = '';
+
+            // Собираем всё в один список
+            const allChats = [];
+            
+            groups.forEach(g => {
+                allChats.push({ id: g.id, name: g.name, isGroup: true, avatar: '/default-avatar.png' });
+            });
+            
+            personalChats.forEach(chat => {
+                const partner = chat.user1 === myUsername ? chat.user2 : chat.user1;
+                const userObj = allUsers.find(u => u.username === partner);
+                const avatar = userObj && userObj.avatar ? userObj.avatar : '/default-avatar.png';
+                allChats.push({ id: partner, name: partner, isGroup: false, avatar: avatar });
+            });
+
+            if (allChats.length === 0) {
+                listEl.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Нет доступных чатов</div>';
+                return;
+            }
+
+            allChats.forEach(chat => {
+                const div = document.createElement('div');
+                div.style.cssText = "display: flex; align-items: center; gap: 12px; padding: 10px; cursor: pointer; border-radius: 10px; transition: background 0.2s;";
+                div.onmouseover = () => div.style.background = 'rgba(0,0,0,0.1)';
+                div.onmouseout = () => div.style.background = 'transparent';
+                
+                const icon = chat.isGroup ? '📢 ' : '';
+                div.innerHTML = `
+                    <img src="${chat.avatar}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                    <div style="flex: 1; color: var(--text-main); font-weight: 500;">${icon}${chat.name}</div>
+                `;
+                
+                div.onclick = () => {
+                    forwardModal.style.display = 'none';
+                    executeForward(chat);
+                };
+                listEl.appendChild(div);
+            });
+            
+        } catch (e) {
+            console.error("Ошибка загрузки чатов для пересылки", e);
+            listEl.innerHTML = '<div style="text-align:center; padding: 20px; color: #ff4d4d;">Ошибка загрузки</div>';
+        }
+    }
+
+    async function executeForward(targetChat) {
+        if (!messageToForward) return;
+        
+        try {
+            // 1. Ищем оригинальное сообщение в кэше
+            const cacheKey = currentChatIsGroup ? `group_${currentChatUser}` : `personal_${currentChatUser}`;
+            const historyArray = APP_CACHE.history.get(cacheKey);
+            if (!historyArray) throw new Error("История не найдена");
+            
+            const originalMsg = historyArray.find(m => m.id === messageToForward);
+            if (!originalMsg) throw new Error("Сообщение не найдено");
+            
+            const box = originalMsg.secretBox;
+            const originalSender = originalMsg.sender;
+
+            // 2. Вычисляем ключ для целевого чата (куда пересылаем)
+            let targetSharedKey = null;
+            if (targetChat.isGroup) {
+                targetSharedKey = await fetchGroupKey(targetChat.id);
+            } else {
+                const res = await fetch(`/api/users/${targetChat.id}`);
+                const friendInfo = await res.json();
+                targetSharedKey = await deriveSharedSecret(friendInfo.publicKey);
+            }
+            if (!targetSharedKey) throw new Error("Не удалось получить ключ целевого чата");
+
+            // Функция для расшифровки и перешифровки одного куска данных
+            async function reencryptBuffer(encryptedBox) {
+                const decrypted = await decryptMessage(encryptedBox, currentSharedKey);
+                if (!decrypted) throw new Error("Ошибка расшифровки оригинала");
+                return await encryptMessage(decrypted, targetSharedKey);
+            }
+
+            // 3. Формируем новый secretBox для пересылки
+            const msgId = crypto.randomUUID();
+            let newBox = { forwardedFrom: originalSender };
+
+            if (!box.type || box.type === 'TEXT') {
+                const decrypted = await decryptMessage(box, currentSharedKey);
+                const encrypted = await encryptMessage(decrypted, targetSharedKey);
+                newBox = { ...newBox, type: 'TEXT', ciphertext: encrypted.ciphertext, iv: encrypted.iv };
+            } else if (box.type === 'ALBUM') {
+                const newImages = [];
+                for (let imgBox of box.images) {
+                    const encrypted = await reencryptBuffer(imgBox);
+                    newImages.push({
+                        ciphertext: encrypted.ciphertext,
+                        iv: encrypted.iv,
+                        mimeType: imgBox.mimeType,
+                        fileName: imgBox.fileName
+                    });
+                }
+                newBox = { ...newBox, type: 'ALBUM', images: newImages };
+            } else {
+                // Файлы, Фото, Видео кружочки, Аудио
+                const encrypted = await reencryptBuffer(box);
+                newBox = { 
+                    ...newBox, 
+                    type: box.type, 
+                    ciphertext: encrypted.ciphertext, 
+                    iv: encrypted.iv, 
+                    mimeType: box.mimeType, 
+                    fileName: box.fileName 
+                };
+            }
+
+            // 4. Отправляем на сервер
+            const payload = {
+                id: msgId,
+                sender: myUsername,
+                recipient: targetChat.isGroup ? null : targetChat.id,
+                isGroup: targetChat.isGroup,
+                groupId: targetChat.isGroup ? targetChat.id : null,
+                secretBox: newBox
+            };
+
+            socket.emit('send_message', { text: JSON.stringify(payload) });
+
+            // 5. Отрисовываем у себя, если мы пересылаем В ТЕКУЩИЙ чат
+            if ((targetChat.isGroup && targetChat.id === currentChatUser && currentChatIsGroup) || 
+                (!targetChat.isGroup && targetChat.id === currentChatUser && !currentChatIsGroup)) {
+                
+                // Чтобы не писать логику отрисовки с нуля, эмулируем получение своего же сообщения
+                payload.isRead = false;
+                payload.createdAt = new Date().toISOString();
+                
+                // Добавляем в кэш
+                const targetCacheKey = targetChat.isGroup ? `group_${targetChat.id}` : `personal_${targetChat.id}`;
+                if (!APP_CACHE.history.has(targetCacheKey)) APP_CACHE.history.set(targetCacheKey, []);
+                APP_CACHE.history.get(targetCacheKey).push(payload);
+                
+                // Если мы сейчас смотрим на этот чат, рендерим!
+                const listeners = socket.listeners('receive_message');
+                if (listeners.length > 0) {
+                    listeners[0]({ text: JSON.stringify(payload) });
+                }
+            } else {
+                // Если переслали в другой чат, просто обновляем сайдбар
+                loadActiveChats();
+            }
+
+        } catch (e) {
+            console.error("Ошибка при пересылке:", e);
+            alert("Не удалось переслать сообщение: " + e.message);
+        }
+    }    // Кнопка "Изменить"
     document.getElementById('ctx-edit-btn').addEventListener('click', () => {
         activeEdit = selectedMessageId;
         const textToEdit = selectedTextToCopy;
@@ -3447,7 +3654,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 if (!box.type || box.type === 'TEXT') {
                     const text = escapeHTML(bufferToText(decryptedBuffer));
                     const displayText = payload.isGroup ? senderPrefix + text : text;
-                    displayMessage(displayText, type, payload.sender, new Date(), false, '', false, false, false, payload.id, box.replyTo);
+                    displayMessage(displayText, type, payload.sender, new Date(), false, '', false, false, false, payload.id, box.replyTo, false, false, false, box.forwardedFrom);
                 } else if (box.type === 'ALBUM') {
                     const mediaUrls = [];
                     for (let imgBox of box.images) {
@@ -3458,21 +3665,21 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                             mediaUrls.push({ url: newUrl, type: imgBox.mimeType });
                         }
                     }
-                    displayMessage(mediaUrls, type, payload.sender, new Date(), false, '', false, false, false, payload.id, box.replyTo, true);
+                    displayMessage(mediaUrls, type, payload.sender, new Date(), false, '', false, false, false, payload.id, box.replyTo, true, false, false, box.forwardedFrom);
                 } else if (box.type === 'AUDIO') {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, type, payload.sender, new Date(), false, '', false, true, false, payload.id, box.replyTo);
+                    displayMessage(url, type, payload.sender, new Date(), false, '', false, true, false, payload.id, box.replyTo, false, false, false, box.forwardedFrom);
                 } else if (box.type === 'VIDEO_CIRCLE') {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, type, payload.sender, new Date(), false, '', false, false, true, payload.id, box.replyTo);
+                    displayMessage(url, type, payload.sender, new Date(), false, '', false, false, true, payload.id, box.replyTo, false, false, false, box.forwardedFrom);
                 } else {
                     const safeType = (box.type === 'FILE') ? 'application/octet-stream' : box.mimeType;
                     const blob = new Blob([decryptedBuffer], { type: safeType });
                     
                     const fileUrl = URL.createObjectURL(blob);
-                    displayMessage(fileUrl, type, payload.sender, new Date(), box.type === 'IMAGE', box.fileName, false, false, false, payload.id, box.replyTo);
+                    displayMessage(fileUrl, type, payload.sender, new Date(), box.type === 'IMAGE', box.fileName, false, false, false, payload.id, box.replyTo, false, false, false, box.forwardedFrom);
                 }
                 
                 // ХИТРЫЙ ТРЮК С ГАЛОЧКАМИ:
@@ -3591,7 +3798,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
                             // Функция-помощник для отрисовки с флагом PREPEND = TRUE
                             const renderPrepended = (contentHtml, isImage, fileName, isAudio, isCircle, isAlbum) => {
-                                displayMessage(contentHtml, type, msg.sender, new Date(msg.createdAt), isImage, fileName, msg.isRead, isAudio, isCircle, msg.id, box.replyTo, isAlbum, true); // <--- TRUE!
+                                displayMessage(contentHtml, type, msg.sender, new Date(msg.createdAt), isImage, fileName, msg.isRead, isAudio, isCircle, msg.id, box.replyTo, isAlbum, true, msg.isEdited, box.forwardedFrom);
                                 if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                             };
 
