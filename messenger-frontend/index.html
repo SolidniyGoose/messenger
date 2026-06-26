@@ -981,7 +981,7 @@
                 
                 // Функция-обертка, чтобы добавить кнопку "Комментарии"
                 const renderWithCommentBtn = (contentHtml, senderName, type, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum, isEdited = false) => {
-                    displayMessage(contentHtml, type, senderName, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum, false, isEdited);
+                    displayMessage(contentHtml, type, senderName, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum, false, isEdited, box.forwardedFrom, box.waveform, box.duration);
                     if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                     
                     // Если мы в режиме канала и это пост - приклеиваем под него кнопку
@@ -2252,10 +2252,87 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     document.getElementById('close-shared-media-btn').addEventListener('click', () => {
         sharedMediaModal.style.display = 'none';
     });
+    
+    let currentPlayingAudio = null;
+    let currentPlayingBtn = null;
+
+    function initCustomAudioPlayer(msgDiv) {
+        const audio = msgDiv.querySelector('.hidden-audio');
+        const playBtn = msgDiv.querySelector('.audio-play-btn');
+        const icon = playBtn.querySelector('.play-icon');
+        const timeEl = msgDiv.querySelector('.audio-time');
+        const waveContainer = msgDiv.querySelector('.waveform-container');
+        const bars = waveContainer.querySelectorAll('.wave-bar');
+        
+        const duration = parseFloat(timeEl.getAttribute('data-duration') || '0');
+        
+        const formatTime = (secs) => {
+            if (!secs || isNaN(secs) || !isFinite(secs)) return '0:00';
+            const m = Math.floor(secs / 60);
+            const s = Math.floor(secs % 60);
+            return `${m}:${s.toString().padStart(2, '0')}`;
+        };
+
+        const updateWaveformColor = (progressPercent) => {
+            bars.forEach((bar, idx) => {
+                const barPercent = idx / bars.length;
+                if (barPercent <= progressPercent) {
+                    bar.style.background = 'var(--primary-color)';
+                } else {
+                    bar.style.background = 'rgba(255,255,255,0.4)';
+                }
+            });
+        };
+
+        playBtn.addEventListener('click', () => {
+            if (audio.paused) {
+                if (currentPlayingAudio && currentPlayingAudio !== audio) {
+                    currentPlayingAudio.pause();
+                    if (currentPlayingBtn) currentPlayingBtn.innerHTML = '▶';
+                }
+                audio.play();
+                icon.innerHTML = '⏸';
+                currentPlayingAudio = audio;
+                currentPlayingBtn = icon;
+            } else {
+                audio.pause();
+                icon.innerHTML = '▶';
+                currentPlayingAudio = null;
+                currentPlayingBtn = null;
+            }
+        });
+
+        audio.addEventListener('timeupdate', () => {
+            if (isNaN(audio.duration) || !isFinite(audio.duration)) return;
+            const progress = audio.currentTime / audio.duration;
+            updateWaveformColor(progress);
+            timeEl.textContent = formatTime(audio.currentTime);
+        });
+
+        audio.addEventListener('ended', () => {
+            icon.innerHTML = '▶';
+            currentPlayingAudio = null;
+            currentPlayingBtn = null;
+            updateWaveformColor(0);
+            timeEl.textContent = formatTime(duration);
+        });
+
+        waveContainer.addEventListener('click', (e) => {
+            if (isNaN(audio.duration) || !isFinite(audio.duration)) return;
+            const rect = waveContainer.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const clickPercent = clickX / rect.width;
+            audio.currentTime = clickPercent * audio.duration;
+            updateWaveformColor(clickPercent);
+            
+            // Если была пауза, запускаем
+            if (audio.paused) playBtn.click();
+        });
+    }
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ВСЕ ФОРМАТЫ) ---
     // ИСПРАВЛЕНИЕ: Добавили параметр senderName для отрисовки аватарок
 // ИСПРАВЛЕНИЕ: Добавили параметр prepend = false в конец
-    function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false, prepend = false, isEdited = false, forwardedFrom = null) {
+    function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false, prepend = false, isEdited = false, forwardedFrom = null, waveform = null, duration = 0) {
         const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         
@@ -2354,8 +2431,41 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             let innerContent = content;
             
             if (isAudio) {
-                // Добавили width и max-width: 100% для адаптивности плеера
-                innerContent = `<audio controls style="width: 280px; max-width: 100%; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
+                if (waveform && waveform.length > 0) {
+                    let barsHtml = '';
+                    waveform.forEach((amp, idx) => {
+                        const height = Math.max(10, amp * 100);
+                        barsHtml += `<div class="wave-bar wave-bar-${idx}" style="width: 3px; height: ${height}%; background: rgba(255,255,255,0.4); border-radius: 2px; transition: background 0.1s; pointer-events: none;"></div>`;
+                    });
+                    
+                    const formatTime = (secs) => {
+                        if (!secs || isNaN(secs) || !isFinite(secs)) return '0:00';
+                        const m = Math.floor(secs / 60);
+                        const s = Math.floor(secs % 60);
+                        return `${m}:${s.toString().padStart(2, '0')}`;
+                    };
+                    
+                    const durStr = formatTime(duration);
+                    
+                    innerContent = `
+                        <div class="custom-audio-player" style="display: flex; align-items: center; gap: 10px; width: 250px; max-width: 100%; background: transparent; padding: 5px 0;">
+                            <button class="audio-play-btn" style="width: 40px; height: 40px; border-radius: 50%; background: var(--primary-color); border: none; color: white; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; outline: none; transition: transform 0.1s;">
+                                <span class="play-icon">▶</span>
+                            </button>
+                            
+                            <div style="flex: 1; display: flex; flex-direction: column; gap: 4px;">
+                                <div class="waveform-container" style="display: flex; align-items: center; gap: 2px; height: 24px; cursor: pointer; position: relative;">
+                                    ${barsHtml}
+                                </div>
+                                <div class="audio-time" data-duration="${duration}" style="font-size: 11px; opacity: 0.8; font-family: monospace;">${durStr}</div>
+                            </div>
+                            
+                            <audio class="hidden-audio" src="${content}" preload="metadata" style="display:none;"></audio>
+                        </div>
+                    `;
+                } else {
+                    innerContent = `<audio controls style="width: 280px; max-width: 100%; height: 40px; border-radius: 8px; outline: none;"><source src="${content}"></audio>`;
+                }
             } else if (isAlbum) {
                 const mediaItems = content; 
                 const encodedMediaString = encodeURIComponent(JSON.stringify(mediaItems)); 
@@ -2392,6 +2502,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const reactionsHtml = `<div class="reactions-holder" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;"></div>`;
             const editedHtml = isEdited ? `<span style="font-size: 10px; margin-right: 4px; opacity: 0.7;">(изменено)</span>` : '';
             msgDiv.innerHTML = `${topHtml}${innerContent} <span class="meta">${editedHtml}${timeString}${statusHtml}</span>${reactionsHtml}`;
+
+            if (isAudio && waveform && waveform.length > 0) {
+                initCustomAudioPlayer(msgDiv);
+            }
         }
 
         // Собираем всё в обертку
@@ -3392,6 +3506,43 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     window.addEventListener('touchend', handleEndPress);
     
     // --- 6. ЗАПИСЬ И ОТПРАВКА ГОЛОСОВЫХ СООБЩЕНИЙ ---
+    
+    async function generateWaveform(arrayBuffer, buckets = 40) {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const decodedData = await ctx.decodeAudioData(arrayBuffer.slice(0));
+            const channelData = decodedData.getChannelData(0);
+            
+            const blockSize = Math.floor(channelData.length / buckets);
+            const waveform = [];
+            let maxAmp = 0;
+            
+            for (let i = 0; i < buckets; i++) {
+                const start = i * blockSize;
+                let sum = 0;
+                for (let j = 0; j < blockSize; j++) {
+                    sum += Math.abs(channelData[start + j]);
+                }
+                const amp = sum / blockSize;
+                waveform.push(amp);
+                if (amp > maxAmp) maxAmp = amp;
+            }
+            
+            if (maxAmp === 0) maxAmp = 1;
+            
+            return {
+                waveform: waveform.map(amp => parseFloat(Math.max(0.1, amp / maxAmp).toFixed(2))),
+                duration: decodedData.duration
+            };
+        } catch (e) {
+            console.error("Ошибка генерации волны:", e);
+            return {
+                waveform: Array.from({length: buckets}, () => parseFloat(Math.max(0.1, Math.random()).toFixed(2))),
+                duration: 0
+            };
+        }
+    }
+
     const micBtn = document.getElementById('mic-btn');
     let mediaRecorder;
     let audioChunks = [];
@@ -3417,11 +3568,13 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     
                     console.log(`🔒 Шифрование голосового сообщения...`);
                     const encryptedData = await encryptMessage(arrayBuffer, currentSharedKey);
+                    
+                    const { waveform, duration } = await generateWaveform(arrayBuffer, 40);
 
-                    const msgId = crypto.randomUUID(); // <--- ДОБАВИЛИ ЭТО!
+                    const msgId = crypto.randomUUID(); 
 
                     const payload = {
-                        id: msgId, // <--- И ДОБАВИЛИ СЮДА!
+                        id: msgId, 
                         sender: myUsername,
                         recipient: currentChatIsGroup ? null : currentChatUser,
                         groupId: currentChatIsGroup ? currentChatUser : null,
@@ -3430,13 +3583,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                             ...encryptedData, 
                             type: 'AUDIO',
                             mimeType: 'audio/webm',
+                            waveform: waveform,
+                            duration: duration,
                             replyTo: currentChannelView === 'thread' ? currentThreadPostId : activeReply, // Авто-ответ в ветке!
                             isComment: currentGroupData?.isChannel && currentChannelView !== 'main' // Флаг комментария
                         }
                     };
                     
                     appendToHistoryCache(currentChatIsGroup, currentChatUser, {
-                        id: msgId, // Теперь эта переменная существует!
+                        id: msgId,
                         sender: myUsername,
                         secretBox: payload.secretBox,
                         createdAt: new Date().toISOString(),
@@ -3447,7 +3602,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     socket.emit('send_message', { text: JSON.stringify(payload) });
                     
                     const audioUrl = URL.createObjectURL(audioBlob);
-                    displayMessage(fileUrl, 'my-message', myUsername, new Date(), isImage, file.name, false, false, false, msgId, activeReply);
+                    displayMessage(audioUrl, 'my-message', myUsername, new Date(), false, '', false, true, false, msgId, activeReply, false, false, false, null, waveform, duration);
                 };
 
                 mediaRecorder.start();
@@ -3678,7 +3833,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 } else if (box.type === 'AUDIO') {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
-                    displayMessage(url, type, payload.sender, new Date(), false, '', false, true, false, payload.id, box.replyTo, false, false, false, box.forwardedFrom);
+                    displayMessage(url, type, payload.sender, new Date(), false, '', false, true, false, payload.id, box.replyTo, false, false, false, box.forwardedFrom, box.waveform, box.duration);
                 } else if (box.type === 'VIDEO_CIRCLE') {
                     const blob = new Blob([decryptedBuffer], { type: box.mimeType });
                     const url = URL.createObjectURL(blob);
@@ -3807,7 +3962,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
                             // Функция-помощник для отрисовки с флагом PREPEND = TRUE
                             const renderPrepended = (contentHtml, isImage, fileName, isAudio, isCircle, isAlbum) => {
-                                displayMessage(contentHtml, type, msg.sender, new Date(msg.createdAt), isImage, fileName, msg.isRead, isAudio, isCircle, msg.id, box.replyTo, isAlbum, true, msg.isEdited, box.forwardedFrom);
+                                displayMessage(contentHtml, type, msg.sender, new Date(msg.createdAt), isImage, fileName, msg.isRead, isAudio, isCircle, msg.id, box.replyTo, isAlbum, true, msg.isEdited, box.forwardedFrom, box.waveform, box.duration);
                                 if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                             };
 
