@@ -66,11 +66,31 @@
         <button id="toggle-mic-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">🎤</button>
         <button id="toggle-cam-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">📷</button>
         <button id="toggle-screen-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">💻</button>
-        <button id="end-call-btn" style="width: 60px; height: 60px; border-radius: 50%; background: #ff3b30; color: white; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 0 15px rgba(255,59,48,0.5);">
-            <span style="transform: rotate(135deg); display: inline-block;">📞</span>
-        </button>
+        <button id="end-call-btn" style="width: 60px; height: 60px; border-radius: 50%; background: #ff3b30; color: white; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 59, 48, 0.4);"><span style="display:inline-block; transform: rotate(135deg);">📞</span></button>
+        <button id="call-settings-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">⋮</button>
     </div>
     <audio id="remote-audio" autoplay></audio>
+</div>
+
+<div id="call-settings-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9500; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+    <div style="background: var(--bg-main); width: 400px; max-width: 90%; border-radius: 20px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+        <h3 style="margin-top: 0; color: var(--text-main);">Настройки устройств</h3>
+        <div style="margin-bottom: 15px;">
+            <label style="color: var(--text-muted); font-size: 14px; margin-bottom: 5px; display: block;">Камера</label>
+            <select id="camera-select" style="width: 100%; padding: 10px; border-radius: 10px; background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main);"></select>
+        </div>
+        <div style="margin-bottom: 15px;">
+            <label style="color: var(--text-muted); font-size: 14px; margin-bottom: 5px; display: block;">Микрофон</label>
+            <select id="mic-select" style="width: 100%; padding: 10px; border-radius: 10px; background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main);"></select>
+        </div>
+        <div style="margin-bottom: 25px;">
+            <label style="color: var(--text-muted); font-size: 14px; margin-bottom: 5px; display: block;">Динамик</label>
+            <select id="speaker-select" style="width: 100%; padding: 10px; border-radius: 10px; background: var(--input-bg); border: 1px solid var(--border-color); color: var(--text-main);"></select>
+        </div>
+        <div style="display: flex; justify-content: flex-end;">
+            <button id="close-call-settings-btn" style="padding: 10px 20px; border-radius: 10px; border: none; background: var(--primary-color); color: white; cursor: pointer; font-weight: bold;">Закрыть</button>
+        </div>
+    </div>
 </div>
 
 <div id="contacts-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
@@ -4104,14 +4124,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             groupId: currentGroupData.id,
             groupName: currentGroupData.name,
             roomName: roomName,
-            isVideo: true
+            isVideo: false
         });
         
         activeModal.style.display = 'flex';
         document.getElementById('call-status-text').textContent = 'Звоним в группу...';
         document.getElementById('call-status-text').style.display = 'block';
         
-        joinLiveKitRoom(roomName, true);
+        joinLiveKitRoom(roomName, false);
     });
 
     let currentIncomingCall = null;
@@ -4168,7 +4188,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         document.getElementById('call-status-text').style.display = 'block';
         
         if (currentIncomingCall.isGroupCall) {
-            await joinLiveKitRoom(currentIncomingCall.roomName, true);
+            await joinLiveKitRoom(currentIncomingCall.roomName, false);
         } else {
             socket.emit('call_accepted', {
                 caller: currentIncomingCall.caller,
@@ -4510,6 +4530,71 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             }
         } catch (e) {
             console.error("Ошибка шаринга экрана:", e);
+        }
+    });
+
+    const callSettingsBtn = document.getElementById('call-settings-btn');
+    const callSettingsModal = document.getElementById('call-settings-modal');
+    const closeCallSettingsBtn = document.getElementById('close-call-settings-btn');
+    const camSelect = document.getElementById('camera-select');
+    const micSelect = document.getElementById('mic-select');
+    const speakerSelect = document.getElementById('speaker-select');
+
+    callSettingsBtn.addEventListener('click', async () => {
+        callSettingsModal.style.display = 'flex';
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            camSelect.innerHTML = '';
+            micSelect.innerHTML = '';
+            speakerSelect.innerHTML = '';
+            
+            devices.forEach(device => {
+                const option = document.createElement('option');
+                option.value = device.deviceId;
+                option.text = device.label || `${device.kind} (${device.deviceId.slice(0, 5)}...)`;
+                
+                if (device.kind === 'videoinput') {
+                    camSelect.appendChild(option);
+                } else if (device.kind === 'audioinput') {
+                    micSelect.appendChild(option);
+                } else if (device.kind === 'audiooutput') {
+                    speakerSelect.appendChild(option);
+                }
+            });
+            
+            // Если в звонке, выбираем текущие устройства
+            if (currentRoom) {
+                const activeAudio = currentRoom.localParticipant.audioTrackPublications.values().next().value;
+                if (activeAudio && activeAudio.track && activeAudio.track.mediaStreamTrack) {
+                    micSelect.value = activeAudio.track.mediaStreamTrack.getSettings().deviceId;
+                }
+                const activeVideo = currentRoom.localParticipant.videoTrackPublications.values().next().value;
+                if (activeVideo && activeVideo.track && activeVideo.track.mediaStreamTrack) {
+                    camSelect.value = activeVideo.track.mediaStreamTrack.getSettings().deviceId;
+                }
+            }
+        } catch (err) {
+            console.error("Ошибка получения устройств", err);
+        }
+    });
+
+    closeCallSettingsBtn.addEventListener('click', () => {
+        callSettingsModal.style.display = 'none';
+    });
+
+    camSelect.addEventListener('change', async (e) => {
+        if (currentRoom) {
+            await currentRoom.switchActiveDevice('videoinput', e.target.value);
+        }
+    });
+    micSelect.addEventListener('change', async (e) => {
+        if (currentRoom) {
+            await currentRoom.switchActiveDevice('audioinput', e.target.value);
+        }
+    });
+    speakerSelect.addEventListener('change', async (e) => {
+        if (currentRoom) {
+            await currentRoom.switchActiveDevice('audiooutput', e.target.value);
         }
     });
 </script>
