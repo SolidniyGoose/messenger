@@ -1330,6 +1330,119 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
 // --- 2. ФУНКЦИЯ: ЗАГРУЗКА АКТИВНЫХ ЧАТОВ И ГРУПП ---
     // --- 2. ФУНКЦИЯ: ЗАГРУЗКА АКТИВНЫХ ЧАТОВ И ГРУПП ---
+    
+    function formatMessageTime(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        const today = new Date();
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        
+        if (date.toDateString() === today.toDateString()) {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } else if (date.toDateString() === yesterday.toDateString()) {
+            return 'Вчера';
+        } else {
+            return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+        }
+    }
+
+    async function getSharedKeyFor(cacheKey, isGroup) {
+        if (isGroup) {
+            const groupId = cacheKey.replace('group_', '');
+            const groupRes = await fetch(`/api/groups/${groupId}`);
+            if (!groupRes.ok) return null;
+            const group = await groupRes.json();
+            const mySafe = group.members.find(m => m.username === myUsername);
+            if (!mySafe) return null;
+            const safeData = typeof mySafe.encryptedKeyBox === 'string' ? JSON.parse(mySafe.encryptedKeyBox) : mySafe.encryptedKeyBox;
+            const adminName = safeData.encryptedBy;
+            let adminProfile = APP_CACHE.profiles.get(adminName);
+            if (!adminProfile) {
+                const res = await fetch(`/api/users/${adminName}/profile`);
+                if (!res.ok) return null;
+                adminProfile = await res.json();
+                APP_CACHE.profiles.set(adminName, adminProfile);
+            }
+            const tempKey = await deriveSharedSecret(mySecretKey, hexToArrayBuffer(adminProfile.key));
+            const decryptedGroupKey = await decryptMessage(safeData, tempKey);
+            return await importKeyFromRaw(decryptedGroupKey);
+        } else {
+            const username = cacheKey.replace('chat_', '');
+            let userProfile = APP_CACHE.profiles.get(username);
+            if (!userProfile) {
+                const res = await fetch(`/api/users/${username}/profile`);
+                if (!res.ok) return null;
+                userProfile = await res.json();
+                APP_CACHE.profiles.set(username, userProfile);
+            }
+            return await deriveSharedSecret(mySecretKey, hexToArrayBuffer(userProfile.key));
+        }
+    }
+
+    async function renderChatPreview(previewContainer, timeContainer, badgeContainer, cacheKey, isGroup) {
+        try {
+            const history = APP_CACHE.history.get(cacheKey) || [];
+            let text = 'сообщений нет';
+            let timeStr = '';
+            let unreadCount = 0;
+            
+            if (history.length > 0) {
+                let lastMsg = null;
+                for (let i = history.length - 1; i >= 0; i--) {
+                    if (!deletedLocally.includes(history[i].id)) {
+                        lastMsg = history[i];
+                        break;
+                    }
+                }
+                
+                if (lastMsg) {
+                    timeStr = formatMessageTime(lastMsg.createdAt);
+                    unreadCount = history.filter(m => !m.isRead && m.sender !== myUsername && !deletedLocally.includes(m.id)).length;
+                    
+                    const senderPrefix = lastMsg.sender === 'SYSTEM' ? '' : (lastMsg.sender === myUsername ? 'Вы: ' : `${lastMsg.sender}: `);
+                    const box = typeof lastMsg.secretBox === 'string' ? JSON.parse(lastMsg.secretBox) : lastMsg.secretBox;
+                    
+                    if (lastMsg.sender === 'SYSTEM') {
+                        text = box.text;
+                    } else if (box.type === 'ALBUM') {
+                        text = `${senderPrefix}${box.images.length} фото`;
+                    } else if (box.type === 'AUDIO') {
+                        text = `${senderPrefix}аудиосообщение`;
+                    } else if (box.type === 'VIDEO_CIRCLE') {
+                        text = `${senderPrefix}видеосообщение`;
+                    } else if (box.type === 'VIDEO') {
+                        text = `${senderPrefix}видео`;
+                    } else if (box.isImage) { 
+                        text = `${senderPrefix}фото`;
+                    } else if (!box.type || box.type === 'TEXT') {
+                        const sharedKey = await getSharedKeyFor(cacheKey, isGroup);
+                        if (sharedKey) {
+                            const decryptedBuffer = await decryptMessage(box, sharedKey);
+                            if (decryptedBuffer) {
+                                text = senderPrefix + escapeHTML(bufferToText(decryptedBuffer));
+                            } else {
+                                text = senderPrefix + "Сообщение";
+                            }
+                        }
+                    }
+                }
+            }
+            
+            previewContainer.innerHTML = text;
+            timeContainer.innerHTML = timeStr;
+            
+            if (unreadCount > 0) {
+                badgeContainer.innerHTML = unreadCount > 99 ? '99+' : unreadCount;
+                badgeContainer.style.display = 'block';
+            } else {
+                badgeContainer.style.display = 'none';
+            }
+        } catch (e) {
+            console.error("Ошибка при отрисовке превью", e);
+        }
+    }
+
     async function loadActiveChats() {
         if (!myUsername) return; 
 
@@ -1367,15 +1480,36 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 const typeText = group.isChannel ? 'Канал' : 'Группа';
 
                 // ВОТ ЗДЕСЬ МЫ ИСПРАВИЛИ БАГ С ТЕКСТОМ:
+                chatItem.style.display = 'flex';
+                chatItem.style.justifyContent = 'space-between';
+                chatItem.style.alignItems = 'center';
+                
                 chatItem.innerHTML = `
-                    <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-                        ${avatarHtml}
+                    <div style="display: flex; flex: 1; align-items: center; min-width: 0;">
+                        <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                            ${avatarHtml}
+                        </div>
+                        <div class="chat-info" style="flex: 1; min-width: 0; margin-right: 10px;">
+                            <div style="font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeGroupName}</div>
+                            <div style="display: flex; align-items: center;">
+                                <div class="preview-text" style="font-size: 13px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${typeText} (${group._count.members} уч.)</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="chat-info">
-                        <div style="font-weight: 600; font-size: 15px;">${safeGroupName}</div>
-                        <div style="font-size: 13px; opacity: 0.9;">${typeText} (${group._count.members} уч.)</div>
+                    <div class="chat-meta" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; flex-shrink: 0; min-width: 40px;">
+                        <div class="preview-time" style="font-size: 11px; opacity: 0.7; margin-bottom: 4px;"></div>
+                        <div class="unread-badge" style="display: none; background: var(--primary-color); color: white; font-size: 11px; font-weight: bold; border-radius: 10px; padding: 2px 6px; min-width: 18px; text-align: center;"></div>
                     </div>
                 `;
+                
+                // Рендерим превью асинхронно
+                renderChatPreview(
+                    chatItem.querySelector('.preview-text'), 
+                    chatItem.querySelector('.preview-time'), 
+                    chatItem.querySelector('.unread-badge'), 
+                    `group_${group.id}`, 
+                    true
+                );
                 
                 chatItem.addEventListener('click', () => openGroupChat(group));
                 chatsContainer.appendChild(chatItem); // Добавляем в контейнер
@@ -1415,13 +1549,36 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 // В блоке РЕНДЕРИМ ЛИЧНЫЕ ЧАТЫ:
                 
                 
+                chatItem.style.display = 'flex';
+                chatItem.style.justifyContent = 'space-between';
+                chatItem.style.alignItems = 'center';
+                
                 chatItem.innerHTML = `
-                    <div class="avatar" style="${avatarBackground} display: flex; align-items: center; justify-content: center; overflow: hidden;">${userAvatarHtml}</div>
-                    <div class="chat-info">
-                        <div style="font-weight: 600; font-size: 15px;">${safeDisplayName}</div>
-                        <div style="font-size: 13px; opacity: 0.9;">Нажмите для чата</div>
+                    <div style="display: flex; flex: 1; align-items: center; min-width: 0;">
+                        <div class="avatar" style="${avatarBackground} border-radius: 50%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; width: 48px; height: 48px;">
+                            ${userAvatarHtml}
+                        </div>
+                        <div class="chat-info" style="flex: 1; min-width: 0; margin-right: 10px; margin-left: 15px;">
+                            <div style="font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeDisplayName}</div>
+                            <div style="display: flex; align-items: center;">
+                                <div class="preview-text" style="font-size: 13px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Нажмите для чата</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chat-meta" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; flex-shrink: 0; min-width: 40px;">
+                        <div class="preview-time" style="font-size: 11px; opacity: 0.7; margin-bottom: 4px;"></div>
+                        <div class="unread-badge" style="display: none; background: var(--primary-color); color: white; font-size: 11px; font-weight: bold; border-radius: 10px; padding: 2px 6px; min-width: 18px; text-align: center;"></div>
                     </div>
                 `;
+                
+                // Рендерим превью асинхронно
+                renderChatPreview(
+                    chatItem.querySelector('.preview-text'), 
+                    chatItem.querySelector('.preview-time'), 
+                    chatItem.querySelector('.unread-badge'), 
+                    `chat_${user.username}`, 
+                    false
+                );
                 
                 chatItem.addEventListener('click', () => openChatWith(user));
                 chatsContainer.appendChild(chatItem); // Добавляем в контейнер
@@ -3913,15 +4070,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 isRead: false
             });
             // МАРШРУТИЗАЦИЯ И МГНОВЕННОЕ ОБНОВЛЕНИЕ САЙДБАРА
+            loadActiveChats(); // Обновляем сайдбар в любом случае (чтобы обновилось превью)
+            
             if (payload.isGroup) {
                 if (payload.groupId !== currentChatUser) {
-                    loadActiveChats(); // Обновляем сайдбар (чтобы группа появилась!)
                     return; // Игнорируем отрисовку самого сообщения, т.к. мы в другом окне
                 }
             } else {
                 const chatPartner = payload.sender === myUsername ? payload.recipient : payload.sender;
                 if (chatPartner !== currentChatUser) {
-                    loadActiveChats(); // Обновляем сайдбар
                     return;
                 }
             }

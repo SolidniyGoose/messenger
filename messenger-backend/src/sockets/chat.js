@@ -142,7 +142,7 @@ module.exports = (io) => {
                 const rooms = await roomService.listRooms();
                 const room = rooms.find(r => r.name === data.roomName);
                 
-                if ((room && room.numParticipants > 0) || (callData && (Date.now() - callData.createdAt < 30000))) {
+                if ((room && room.numParticipants > 0) || (callData && !callData.hasBeenJoined && (Date.now() - callData.createdAt < 30000))) {
                     const startTime = (room && room.creationTime) ? Number(room.creationTime) : (callData ? callData.createdAt : Date.now());
                     if (callback) callback({ active: true, startTime });
                 } else {
