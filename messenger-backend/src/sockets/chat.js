@@ -2,6 +2,12 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const onlineUsers = new Map(); 
 
+const { RoomServiceClient } = require('livekit-server-sdk');
+const livekitUrl = 'http://127.0.0.1:7880';
+const livekitApiKey = process.env.LIVEKIT_API_KEY || 'devkey';
+const livekitApiSecret = process.env.LIVEKIT_API_SECRET || 'secret';
+const roomService = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret);
+
 module.exports = (io) => {
     io.on('connection', (socket) => {
         
@@ -43,11 +49,27 @@ module.exports = (io) => {
                     group.members.forEach(m => {
                         if (m.username !== data.caller) {
                             const sId = onlineUsers.get(m.username);
-                            if (sId) io.to(sId).emit('incoming_group_call', data);
+                            if (sId) io.to(sId).emit('group_call_started', data);
                         }
                     });
                 }
             } catch(e) { console.error("Ошибка group_call_request", e); }
+        });
+
+        socket.on('check_group_call_status', async (data, callback) => {
+            // data: { groupId, roomName }
+            try {
+                const rooms = await roomService.listRooms([data.roomName]);
+                if (rooms && rooms.length > 0) {
+                    const room = rooms[0];
+                    if (callback) callback({ active: true, startTime: room.creationTime });
+                } else {
+                    if (callback) callback({ active: false });
+                }
+            } catch(e) { 
+                console.error("Ошибка check_group_call_status", e); 
+                if (callback) callback({ active: false });
+            }
         });
 
         socket.on('call_accepted', (data) => {

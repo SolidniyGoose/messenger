@@ -61,8 +61,8 @@
     <div id="video-grid" style="flex: 1; display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; position: relative; justify-content: center; align-items: center; align-content: center; overflow-y: auto;">
         <div id="call-status-text" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 15px; font-size: 14px; z-index: 10;">Соединение...</div>
     </div>
-    
-    <div style="height: 100px; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; gap: 20px; padding-bottom: env(safe-area-inset-bottom);">
+    <div style="height: 100px; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; gap: 20px; padding-bottom: env(safe-area-inset-bottom); position: relative;">
+        <button id="minimize-call-btn" style="position: absolute; left: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);" title="Свернуть">↙️</button>
         <button id="toggle-mic-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">🎤</button>
         <button id="toggle-cam-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">📷</button>
         <button id="toggle-screen-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">💻</button>
@@ -357,6 +357,7 @@
             <button id="personal-video-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Видеозвонок" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📹</button>
 
             <button id="group-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Звонок в группе" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📞</button>
+            <button id="return-to-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: #34c759; cursor: pointer; padding: 5px 10px; transition: opacity 0.2s; animation: pulse 2s infinite;" title="Вернуться к звонку" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">🟢 Вернуться</button>
             
             <button id="channel-discussion-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px;" title="Все комментарии">💬</button>
             
@@ -367,6 +368,15 @@
     <div id="thread-banner" style="display: none; background: var(--input-bg); padding: 10px 15px; border-bottom: 1px solid var(--border-color); align-items: center; gap: 15px; font-size: 14px; font-weight: 500; z-index: 4;">
         <button id="close-thread-btn" style="background: var(--gradient-primary); color: white; border: none; padding: 5px 12px; border-radius: 12px; cursor: pointer; font-size: 13px;">← В канал</button>
         <span id="thread-title" style="color: var(--text-main);">Комментарии</span>
+    </div>
+
+    <div id="group-call-banner" style="display: none; background: rgba(52, 199, 89, 0.1); border-bottom: 1px solid rgba(52, 199, 89, 0.3); padding: 10px 15px; align-items: center; justify-content: space-between; z-index: 4; font-size: 14px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="width: 10px; height: 10px; background-color: #34c759; border-radius: 50%; animation: pulse 2s infinite;"></div>
+            <span style="color: #34c759; font-weight: bold;">Идёт звонок</span>
+            <span id="group-call-timer" style="color: var(--text-muted); font-family: monospace;">00:00</span>
+        </div>
+        <button id="join-group-call-btn" style="background: #34c759; color: white; border: none; padding: 5px 15px; border-radius: 12px; cursor: pointer; font-weight: bold; font-size: 13px;">Присоединиться</button>
     </div>
 
     <div class="messages" id="messages-list"></div>
@@ -1208,6 +1218,7 @@
         // --- 6. ЗАПУСК ОТРИСОВКИ ЧЕРЕЗ ФИЛЬТРЫ ---
         // Эта функция сама очистит список и отрисует только то, что нужно (посты или комменты)
         await redrawGroupChat();
+        checkGroupCallStatus(group.id);
 
     } catch (error) {
         console.error("Ошибка при входе в группу:", error);
@@ -4115,6 +4126,46 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     personalCallBtn.addEventListener('click', () => startCall(false));
     personalVideoBtn.addEventListener('click', () => startCall(true));
     
+    let groupCallBannerTimer = null;
+    let currentGroupCallStartTime = 0;
+    
+    function startGroupCallBannerTimer(startTimeStr) {
+        clearInterval(groupCallBannerTimer);
+        currentGroupCallStartTime = new Date(startTimeStr).getTime();
+        const timerEl = document.getElementById('group-call-timer');
+        
+        groupCallBannerTimer = setInterval(() => {
+            const now = Date.now();
+            const diff = Math.floor((now - currentGroupCallStartTime) / 1000);
+            const m = Math.floor(diff / 60).toString().padStart(2, '0');
+            const s = (diff % 60).toString().padStart(2, '0');
+            if (timerEl) timerEl.textContent = `${m}:${s}`;
+        }, 1000);
+    }
+    
+    window.checkGroupCallStatus = function(groupId) {
+        document.getElementById('group-call-banner').style.display = 'none';
+        clearInterval(groupCallBannerTimer);
+        
+        socket.emit('check_group_call_status', { roomName: `group_call_${groupId}` }, (res) => {
+            if (res && res.active) {
+                document.getElementById('group-call-banner').style.display = 'flex';
+                startGroupCallBannerTimer(res.startTime);
+            }
+        });
+    };
+    
+    document.getElementById('join-group-call-btn').addEventListener('click', () => {
+        if (!currentChatIsGroup || !currentGroupData) return;
+        const roomName = `group_call_${currentGroupData.id}`;
+        
+        activeModal.style.display = 'flex';
+        document.getElementById('call-status-text').textContent = 'Звоним в группу...';
+        document.getElementById('call-status-text').style.display = 'block';
+        
+        joinLiveKitRoom(roomName, false);
+    });
+
     groupCallBtn.addEventListener('click', () => {
         if (!currentChatIsGroup || !currentGroupData) return;
         const roomName = `group_call_${currentGroupData.id}`;
@@ -4154,19 +4205,12 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }, 30000);
     });
 
-    socket.on('incoming_group_call', (data) => {
-        if (isCallActive) return;
-        
-        currentIncomingCall = { ...data, isGroupCall: true };
-        incomingName.textContent = data.groupName || 'Группа';
-        incomingAvatar.textContent = data.caller[0].toUpperCase();
-        document.getElementById('incoming-call-type').textContent = `Групповой звонок от ${data.caller}`;
-        incomingModal.style.display = 'flex';
-        
-        pendingCallTimeout = setTimeout(() => {
-            incomingModal.style.display = 'none';
-            currentIncomingCall = null;
-        }, 30000);
+    socket.on('group_call_started', (data) => {
+        // Если мы сейчас находимся в этой группе, показываем баннер
+        if (currentChatIsGroup && currentChatUser === data.groupId) {
+            document.getElementById('group-call-banner').style.display = 'flex';
+            startGroupCallBannerTimer(new Date().toISOString());
+        }
     });
 
     rejectCallBtn.addEventListener('click', () => {
@@ -4226,7 +4270,19 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         socket.emit('call_ended', { caller: myUsername, recipient: currentChatUser || (currentIncomingCall ? currentIncomingCall.caller : null) });
         endCallLocally();
     }
+    const minimizeCallBtn = document.getElementById('minimize-call-btn');
+    const returnToCallBtn = document.getElementById('return-to-call-btn');
 
+    minimizeCallBtn.addEventListener('click', () => {
+        activeModal.style.display = 'none';
+        returnToCallBtn.style.display = 'block';
+    });
+
+    returnToCallBtn.addEventListener('click', () => {
+        activeModal.style.display = 'flex';
+        returnToCallBtn.style.display = 'none';
+    });
+    
     function endCallLocally() {
         if (currentRoom) {
             currentRoom.disconnect();
@@ -4240,6 +4296,13 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         activeModal.style.display = 'none';
         incomingModal.style.display = 'none';
         isCallActive = false;
+        
+        const returnBtn = document.getElementById('return-to-call-btn');
+        if (returnBtn) returnBtn.style.display = 'none';
+        
+        const banner = document.getElementById('group-call-banner');
+        if (banner) banner.style.display = 'none';
+        clearInterval(groupCallBannerTimer);
         
         const grid = document.getElementById('video-grid');
         Array.from(grid.children).forEach(child => {
