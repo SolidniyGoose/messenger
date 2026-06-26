@@ -154,6 +154,7 @@ module.exports = (io) => {
                     if (recipientSocketId) io.to(recipientSocketId).emit('message_deleted', data.messageId);
                     if (senderSocketId) io.to(senderSocketId).emit('message_deleted', data.messageId); // Отправляем и себе для синхронизации
                 }
+            } catch (e) { console.error("Ошибка при удалении сообщения:", e); }
         });
 
         // --- НОВОЕ: РЕДАКТИРОВАНИЕ СООБЩЕНИЯ ---
