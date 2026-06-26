@@ -3430,9 +3430,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             }
 
             const box = payload.secretBox;
-            const decryptedBuffer = await decryptMessage(box, currentSharedKey);
             
-            if (decryptedBuffer) {
+            // Если это альбом, у него нет box.ciphertext, он расшифровывается по-другому!
+            let decryptedBuffer = null;
+            if (box.type !== 'ALBUM') {
+                decryptedBuffer = await decryptMessage(box, currentSharedKey);
+            }
+            
+            // Если это альбом (декрипт внутри) ИЛИ обычное сообщение (успешно декриптнуто)
+            if (box.type === 'ALBUM' || decryptedBuffer) {
                 const type = 'other-message';
                 
                 // Добавляем имя отправителя (Только для групп)
@@ -3442,14 +3448,13 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     const text = escapeHTML(bufferToText(decryptedBuffer));
                     const displayText = payload.isGroup ? senderPrefix + text : text;
                     displayMessage(displayText, type, payload.sender, new Date(), false, '', false, false, false, payload.id, box.replyTo);
-                // Внутри receive_message:
                 } else if (box.type === 'ALBUM') {
                     const mediaUrls = [];
                     for (let imgBox of box.images) {
-                        const decryptedBuffer = await decryptMessage(imgBox, currentSharedKey);
-                        if (decryptedBuffer) {
-                            const blob = new Blob([decryptedBuffer], { type: imgBox.mimeType });
-                            const newUrl = URL.createObjectURL(blob); // ИСПРАВЛЕНО
+                        const imgBuffer = await decryptMessage(imgBox, currentSharedKey);
+                        if (imgBuffer) {
+                            const blob = new Blob([imgBuffer], { type: imgBox.mimeType });
+                            const newUrl = URL.createObjectURL(blob);
                             mediaUrls.push({ url: newUrl, type: imgBox.mimeType });
                         }
                     }
@@ -3463,9 +3468,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     const url = URL.createObjectURL(blob);
                     displayMessage(url, type, payload.sender, new Date(), false, '', false, false, true, payload.id, box.replyTo);
                 } else {
-                    // Внутри логики скачивания файла
                     const safeType = (box.type === 'FILE') ? 'application/octet-stream' : box.mimeType;
-                    const blob = new Blob([decryptedBuffer], { type: safeType }); // Принудительное скачивание
+                    const blob = new Blob([decryptedBuffer], { type: safeType });
                     
                     const fileUrl = URL.createObjectURL(blob);
                     displayMessage(fileUrl, type, payload.sender, new Date(), box.type === 'IMAGE', box.fileName, false, false, false, payload.id, box.replyTo);
