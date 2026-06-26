@@ -13,6 +13,8 @@ model User {
   username  String   @unique
   publicKey String?
   encryptedPrivKey String?  
+  displayName String?
+  avatar      String?
   createdAt DateTime @default(now())
 }
 
@@ -21,8 +23,9 @@ model Message {
   id          String   @id @default(uuid())
   sender      String   
   recipient   String?
-groupId   String?  // НОВОЕ: ID группы (если это групповое сообщение)   
+  groupId     String?  // НОВОЕ: ID группы (если это групповое сообщение)   
   secretBox   Json     
+  reactions   String?
   isRead      Boolean  @default(false)
   isEdited    Boolean  @default(false) // <--- НОВОЕ ПОЛЕ
   createdAt   DateTime @default(now())
@@ -32,6 +35,9 @@ groupId   String?  // НОВОЕ: ID группы (если это группо�
 model Group {
   id        String   @id @default(uuid())
   name      String   // Название группы
+  isChannel Boolean  @default(false)
+  isPublic  Boolean  @default(false)
+  avatar    String?
   createdAt DateTime @default(now())
 
   // Связь: кто состоит в группе
