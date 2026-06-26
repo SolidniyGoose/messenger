@@ -3853,10 +3853,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             
             // Если это альбом (декрипт внутри) ИЛИ обычное сообщение (успешно декриптнуто)
             if (box.type === 'ALBUM' || decryptedBuffer) {
-                const type = 'other-message';
+                const type = payload.sender === myUsername ? 'my-message' : 'other-message';
                 
                 // Добавляем имя отправителя (Только для групп)
-                const senderPrefix = payload.isGroup ? `<b style="color: var(--primary-color); font-size: 13px;">${payload.sender}:</b><br>` : '';
+                const senderPrefix = (payload.isGroup && type === 'other-message') ? `<b style="color: var(--primary-color); font-size: 13px;">${payload.sender}:</b><br>` : '';
 
                 if (!box.type || box.type === 'TEXT') {
                     const text = escapeHTML(bufferToText(decryptedBuffer));
