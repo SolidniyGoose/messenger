@@ -2835,7 +2835,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         
         try {
             // 1. Ищем оригинальное сообщение в кэше
-            const cacheKey = currentChatIsGroup ? `group_${currentChatUser}` : `personal_${currentChatUser}`;
+            const cacheKey = currentChatIsGroup ? `group_${currentChatUser}` : `chat_${currentChatUser}`;
             const historyArray = APP_CACHE.history.get(cacheKey);
             if (!historyArray) throw new Error("История не найдена");
             
@@ -2917,7 +2917,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 payload.createdAt = new Date().toISOString();
                 
                 // Добавляем в кэш
-                const targetCacheKey = targetChat.isGroup ? `group_${targetChat.id}` : `personal_${targetChat.id}`;
+                const targetCacheKey = targetChat.isGroup ? `group_${targetChat.id}` : `chat_${targetChat.id}`;
                 if (!APP_CACHE.history.has(targetCacheKey)) APP_CACHE.history.set(targetCacheKey, []);
                 APP_CACHE.history.get(targetCacheKey).push(payload);
                 
