@@ -35,6 +35,21 @@ module.exports = (io) => {
             if (sId) io.to(sId).emit('incoming_call', data);
         });
 
+        socket.on('group_call_request', async (data) => {
+            // data: { caller, groupId, roomName, isVideo, groupName }
+            try {
+                const group = await prisma.group.findUnique({ where: { id: data.groupId }, include: { members: true } });
+                if (group) {
+                    group.members.forEach(m => {
+                        if (m.username !== data.caller) {
+                            const sId = onlineUsers.get(m.username);
+                            if (sId) io.to(sId).emit('incoming_group_call', data);
+                        }
+                    });
+                }
+            } catch(e) { console.error("Ошибка group_call_request", e); }
+        });
+
         socket.on('call_accepted', (data) => {
             // data: { caller, recipient, roomName }
             const sId = onlineUsers.get(data.caller);

@@ -58,11 +58,8 @@
 
 <!-- ИНТЕРФЕЙС АКТИВНОГО ЗВОНКА (LIVEKIT) -->
 <div id="active-call-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #111; z-index: 9000; flex-direction: column;">
-    <div id="video-grid" style="flex: 1; display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; position: relative; justify-content: center; align-items: center; align-content: center;">
-        <video id="remote-video" autoplay playsinline style="flex: 1 1 auto; min-width: 300px; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 15px; background: #222; display: none;"></video>
-        <video id="local-video" autoplay playsinline muted style="width: 120px; height: 160px; object-fit: cover; border-radius: 10px; position: absolute; bottom: 20px; right: 20px; background: #333; box-shadow: 0 5px 15px rgba(0,0,0,0.5); z-index: 2; display: none;"></video>
-        <div id="remote-audio-only-avatar" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 120px; height: 120px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 50px; font-weight: bold; z-index: 1;"></div>
-        <div id="call-status-text" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 15px; font-size: 14px; z-index: 2;">Соединение...</div>
+    <div id="video-grid" style="flex: 1; display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; position: relative; justify-content: center; align-items: center; align-content: center; overflow-y: auto;">
+        <div id="call-status-text" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 15px; font-size: 14px; z-index: 10;">Соединение...</div>
     </div>
     
     <div style="height: 100px; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; gap: 20px; padding-bottom: env(safe-area-inset-bottom);">
@@ -4096,6 +4093,25 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
     personalCallBtn.addEventListener('click', () => startCall(false));
     personalVideoBtn.addEventListener('click', () => startCall(true));
+    
+    groupCallBtn.addEventListener('click', () => {
+        if (!currentChatIsGroup || !currentGroupData) return;
+        const roomName = `group_call_${currentGroupData.id}`;
+        
+        socket.emit('group_call_request', {
+            caller: myUsername,
+            groupId: currentGroupData.id,
+            groupName: currentGroupData.name,
+            roomName: roomName,
+            isVideo: true
+        });
+        
+        activeModal.style.display = 'flex';
+        document.getElementById('call-status-text').textContent = 'Звоним в группу...';
+        document.getElementById('call-status-text').style.display = 'block';
+        
+        joinLiveKitRoom(roomName, true);
+    });
 
     let currentIncomingCall = null;
     
@@ -4108,6 +4124,22 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         currentIncomingCall = data;
         incomingName.textContent = data.caller;
         incomingAvatar.textContent = data.caller[0].toUpperCase();
+        document.getElementById('incoming-call-type').textContent = 'Входящий звонок...';
+        incomingModal.style.display = 'flex';
+        
+        pendingCallTimeout = setTimeout(() => {
+            incomingModal.style.display = 'none';
+            currentIncomingCall = null;
+        }, 30000);
+    });
+
+    socket.on('incoming_group_call', (data) => {
+        if (isCallActive) return;
+        
+        currentIncomingCall = { ...data, isGroupCall: true };
+        incomingName.textContent = data.groupName || 'Группа';
+        incomingAvatar.textContent = data.caller[0].toUpperCase();
+        document.getElementById('incoming-call-type').textContent = `Групповой звонок от ${data.caller}`;
         incomingModal.style.display = 'flex';
         
         pendingCallTimeout = setTimeout(() => {
@@ -4117,7 +4149,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     });
 
     rejectCallBtn.addEventListener('click', () => {
-        if (currentIncomingCall) {
+        if (currentIncomingCall && !currentIncomingCall.isGroupCall) {
             socket.emit('call_rejected', { caller: currentIncomingCall.caller, recipient: myUsername });
         }
         incomingModal.style.display = 'none';
@@ -4134,13 +4166,16 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         document.getElementById('call-status-text').textContent = 'Соединение...';
         document.getElementById('call-status-text').style.display = 'block';
         
-        socket.emit('call_accepted', {
-            caller: currentIncomingCall.caller,
-            recipient: myUsername,
-            roomName: currentIncomingCall.roomName
-        });
-        
-        await joinLiveKitRoom(currentIncomingCall.roomName, currentIncomingCall.isVideo);
+        if (currentIncomingCall.isGroupCall) {
+            await joinLiveKitRoom(currentIncomingCall.roomName, true);
+        } else {
+            socket.emit('call_accepted', {
+                caller: currentIncomingCall.caller,
+                recipient: myUsername,
+                roomName: currentIncomingCall.roomName
+            });
+            await joinLiveKitRoom(currentIncomingCall.roomName, currentIncomingCall.isVideo);
+        }
         currentIncomingCall = null;
     });
 
@@ -4185,19 +4220,81 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         incomingModal.style.display = 'none';
         isCallActive = false;
         
-        localVideoEl.srcObject = null;
-        remoteVideoEl.srcObject = null;
-        localVideoEl.style.display = 'none';
-        remoteVideoEl.style.display = 'none';
-        document.getElementById('remote-audio-only-avatar').style.display = 'flex';
-        document.getElementById('remote-audio-only-avatar').textContent = '';
+        const grid = document.getElementById('video-grid');
+        Array.from(grid.children).forEach(child => {
+            if (child.id !== 'call-status-text') child.remove();
+        });
+        document.querySelectorAll('audio[id^="audio-"], audio[id^="screen-audio-"]').forEach(el => el.remove());
         
-        document.querySelectorAll('video[id^="screen-"], audio[id^="screen-"]').forEach(el => el.remove());
         const toggleScreenBtn = document.getElementById('toggle-screen-btn');
         if (toggleScreenBtn) {
             toggleScreenBtn.textContent = '💻';
             toggleScreenBtn.style.background = 'rgba(255,255,255,0.2)';
         }
+        const toggleCamBtn = document.getElementById('toggle-cam-btn');
+        if (toggleCamBtn) {
+            toggleCamBtn.textContent = '📷';
+            toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
+        }
+        const toggleMicBtn = document.getElementById('toggle-mic-btn');
+        if (toggleMicBtn) {
+            toggleMicBtn.textContent = '🎤';
+            toggleMicBtn.style.background = 'rgba(255,255,255,0.2)';
+        }
+    }
+
+    function createParticipantCell(identity) {
+        if (document.getElementById(`cell-${identity}`)) return;
+        
+        const cell = document.createElement('div');
+        cell.id = `cell-${identity}`;
+        cell.className = 'participant-cell';
+        cell.style.cssText = "flex: 1 1 300px; max-width: 100%; height: 100%; max-height: 100%; min-height: 200px; background: #343833; border-radius: 15px; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; transition: 0.3s; cursor: pointer;";
+        
+        const avatar = document.createElement('div');
+        avatar.id = `avatar-${identity}`;
+        avatar.style.cssText = "width: 80px; height: 80px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: bold; z-index: 1;";
+        avatar.textContent = identity[0].toUpperCase();
+        
+        const camVideo = document.createElement('video');
+        camVideo.id = `cam-${identity}`;
+        camVideo.autoplay = true;
+        camVideo.playsInline = true;
+        camVideo.style.cssText = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 2; display: none; background: #222;";
+        
+        const screenVideo = document.createElement('video');
+        screenVideo.id = `screen-${identity}`;
+        screenVideo.autoplay = true;
+        screenVideo.playsInline = true;
+        screenVideo.style.cssText = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; z-index: 3; display: none; background: #222;";
+        
+        const nameBadge = document.createElement('div');
+        nameBadge.style.cssText = "position: absolute; bottom: 15px; left: 15px; background: rgba(0,0,0,0.6); color: white; padding: 5px 10px; border-radius: 8px; font-size: 14px; font-weight: 500; z-index: 4;";
+        nameBadge.textContent = identity;
+        
+        cell.appendChild(avatar);
+        cell.appendChild(camVideo);
+        cell.appendChild(screenVideo);
+        cell.appendChild(nameBadge);
+        
+        cell.addEventListener('dblclick', () => {
+            if (!document.fullscreenElement) {
+                cell.requestFullscreen().catch(err => console.error(err));
+            } else {
+                document.exitFullscreen();
+            }
+        });
+        
+        document.getElementById('video-grid').appendChild(cell);
+    }
+
+    function removeParticipantCell(identity) {
+        const cell = document.getElementById(`cell-${identity}`);
+        if (cell) cell.remove();
+        const audio = document.getElementById(`audio-${identity}`);
+        if (audio) audio.remove();
+        const screenAudio = document.getElementById(`screen-audio-${identity}`);
+        if (screenAudio) screenAudio.remove();
     }
 
     async function joinLiveKitRoom(roomName, enableVideo) {
@@ -4230,59 +4327,88 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const room = new LivekitClient.Room(e2eeConfig);
             currentRoom = room;
             
+            room.on(LivekitClient.RoomEvent.ParticipantConnected, (participant) => {
+                createParticipantCell(participant.identity);
+            });
+            
+            room.on(LivekitClient.RoomEvent.ParticipantDisconnected, (participant) => {
+                removeParticipantCell(participant.identity);
+            });
+            
             room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                const identity = participant.identity;
+                createParticipantCell(identity);
+                
                 if (track.kind === LivekitClient.Track.Kind.Video) {
                     if (track.source === LivekitClient.Track.Source.ScreenShare) {
-                        const screenVideo = document.createElement('video');
-                        screenVideo.id = `screen-${publication.trackSid}`;
-                        screenVideo.autoplay = true;
-                        screenVideo.playsInline = true;
-                        screenVideo.style.cssText = "flex: 2 1 auto; min-width: 400px; max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 15px; background: #222; border: 2px solid var(--primary-color);";
-                        document.getElementById('video-grid').appendChild(screenVideo);
-                        track.attach(screenVideo);
+                        const sv = document.getElementById(`screen-${identity}`);
+                        if (sv) {
+                            track.attach(sv);
+                            sv.style.display = 'block';
+                        }
                     } else {
-                        track.attach(remoteVideoEl);
-                        remoteVideoEl.style.display = 'block';
+                        const cv = document.getElementById(`cam-${identity}`);
+                        if (cv) {
+                            track.attach(cv);
+                            cv.style.display = 'block';
+                        }
                     }
-                    document.getElementById('remote-audio-only-avatar').style.display = 'none';
+                    const avatar = document.getElementById(`avatar-${identity}`);
+                    if (avatar) avatar.style.display = 'none';
                 } else if (track.kind === LivekitClient.Track.Kind.Audio) {
                     if (track.source === LivekitClient.Track.Source.ScreenShareAudio) {
                         const screenAudio = document.createElement('audio');
-                        screenAudio.id = `screen-audio-${publication.trackSid}`;
+                        screenAudio.id = `screen-audio-${identity}`;
                         screenAudio.autoplay = true;
                         document.body.appendChild(screenAudio);
                         track.attach(screenAudio);
                     } else {
-                        track.attach(remoteAudioEl);
+                        const audio = document.createElement('audio');
+                        audio.id = `audio-${identity}`;
+                        audio.autoplay = true;
+                        document.body.appendChild(audio);
+                        track.attach(audio);
                     }
                 }
-                document.getElementById('remote-audio-only-avatar').textContent = participant.identity[0].toUpperCase();
             });
             
             room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track, publication, participant) => {
+                const identity = participant.identity;
                 track.detach();
                 if (track.kind === LivekitClient.Track.Kind.Video) {
                     if (track.source === LivekitClient.Track.Source.ScreenShare) {
-                        const screenVideo = document.getElementById(`screen-${publication.trackSid}`);
-                        if (screenVideo) screenVideo.remove();
+                        const sv = document.getElementById(`screen-${identity}`);
+                        if (sv) sv.style.display = 'none';
                     } else {
-                        remoteVideoEl.style.display = 'none';
+                        const cv = document.getElementById(`cam-${identity}`);
+                        if (cv) cv.style.display = 'none';
                     }
-                } else if (track.kind === LivekitClient.Track.Kind.Audio && track.source === LivekitClient.Track.Source.ScreenShareAudio) {
-                    const screenAudio = document.getElementById(`screen-audio-${publication.trackSid}`);
-                    if (screenAudio) screenAudio.remove();
-                }
-                
-                let hasVideo = false;
-                participant.videoTrackPublications.forEach(p => {
-                    if (p.isSubscribed && p.track) hasVideo = true;
-                });
-                if (!hasVideo) {
-                    document.getElementById('remote-audio-only-avatar').style.display = 'flex';
+                    
+                    let hasVideo = false;
+                    participant.videoTrackPublications.forEach(p => {
+                        if (p.isSubscribed && p.track) hasVideo = true;
+                    });
+                    if (!hasVideo) {
+                        const avatar = document.getElementById(`avatar-${identity}`);
+                        if (avatar) avatar.style.display = 'flex';
+                    }
+                } else if (track.kind === LivekitClient.Track.Kind.Audio) {
+                    if (track.source === LivekitClient.Track.Source.ScreenShareAudio) {
+                        const sa = document.getElementById(`screen-audio-${identity}`);
+                        if (sa) sa.remove();
+                    } else {
+                        const a = document.getElementById(`audio-${identity}`);
+                        if (a) a.remove();
+                    }
                 }
             });
 
             await room.connect(livekitUrl, token);
+            
+            createParticipantCell(myUsername);
+            room.participants.forEach(p => {
+                createParticipantCell(p.identity);
+            });
             
             const tracks = await LivekitClient.createLocalTracks({
                 audio: true,
@@ -4294,8 +4420,12 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             for (const track of tracks) {
                 await room.localParticipant.publishTrack(track);
                 if (track.kind === LivekitClient.Track.Kind.Video) {
-                    track.attach(localVideoEl);
-                    localVideoEl.style.display = 'block';
+                    const cv = document.getElementById(`cam-${myUsername}`);
+                    if (cv) {
+                        track.attach(cv);
+                        cv.style.display = 'block';
+                        document.getElementById(`avatar-${myUsername}`).style.display = 'none';
+                    }
                 }
             }
             
@@ -4328,10 +4458,18 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         if (videoTrack) {
             if (videoTrack.isMuted) {
                 videoTrack.unmute();
+                const avatar = document.getElementById(`avatar-${myUsername}`);
+                if (avatar) avatar.style.display = 'none';
+                const cv = document.getElementById(`cam-${myUsername}`);
+                if (cv) cv.style.display = 'block';
                 toggleCamBtn.textContent = '📷';
                 toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
             } else {
                 videoTrack.mute();
+                const avatar = document.getElementById(`avatar-${myUsername}`);
+                if (avatar) avatar.style.display = 'flex';
+                const cv = document.getElementById(`cam-${myUsername}`);
+                if (cv) cv.style.display = 'none';
                 toggleCamBtn.textContent = '🚫';
                 toggleCamBtn.style.background = '#ff3b30';
             }
@@ -4341,8 +4479,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 videoTrack = newTracks[0];
                 localTracks.push(videoTrack);
                 await currentRoom.localParticipant.publishTrack(videoTrack);
-                videoTrack.attach(localVideoEl);
-                localVideoEl.style.display = 'block';
+                
+                const cv = document.getElementById(`cam-${myUsername}`);
+                if (cv) {
+                    videoTrack.attach(cv);
+                    cv.style.display = 'block';
+                    const avatar = document.getElementById(`avatar-${myUsername}`);
+                    if (avatar) avatar.style.display = 'none';
+                }
+                
                 toggleCamBtn.textContent = '📷';
                 toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
             } catch (e) { console.error("Ошибка камеры", e); }
