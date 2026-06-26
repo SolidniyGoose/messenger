@@ -946,7 +946,7 @@
                         
                         if (mediaUrl) {
                             if (box.type === 'AUDIO') {
-                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo, false, false, msg.isEdited, box.forwardedFrom);
+                                displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, true, false, msg.id, box.replyTo, false, false, msg.isEdited, box.forwardedFrom, box.waveform, box.duration);
                                 if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                             } else if (box.type === 'VIDEO_CIRCLE') {
                                 displayMessage(mediaUrl, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, true, msg.id, box.replyTo, false, false, msg.isEdited, box.forwardedFrom);
