@@ -4199,17 +4199,17 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const { token } = await res.json();
             
             let e2eeConfig = undefined;
-            // E2EE ТЕПЕРЬ ОТКЛЮЧЕН ДЛЯ ТЕСТА СОЕДИНЕНИЯ
-            /*
             if (currentSharedKey && LivekitClient.supportsE2EE()) {
-                const e2eeProvider = new LivekitClient.E2EEProvider();
-                const keyProvider = new LivekitClient.BaseKeyProvider();
+                const keyProvider = new LivekitClient.ExternalE2EEKeyProvider();
                 const keyHex = Array.from(currentSharedKey).map(b => b.toString(16).padStart(2,'0')).join('');
                 await keyProvider.setKey(keyHex); 
-                e2eeProvider.setKeyProvider(keyProvider);
-                e2eeConfig = { e2ee: e2eeProvider };
+                e2eeConfig = {
+                    e2ee: {
+                        keyProvider: keyProvider,
+                        worker: new Worker('livekit-worker.js')
+                    }
+                };
             }
-            */
             // Теперь подключаемся к нашему бэкенду (он сам проксирует на 7880)
             const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
             const livekitUrl = `${protocol}://${window.location.host}`;
