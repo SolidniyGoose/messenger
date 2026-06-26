@@ -8,6 +8,23 @@
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 </head>
 <body>
+<style>
+        .system-message-container {
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            margin: 15px 0;
+            clear: both;
+        }
+        .system-message-pill {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-muted);
+            font-size: 13px;
+            padding: 6px 16px;
+            border-radius: 20px;
+            text-align: center;
+        }
+</style>
 <div id="auth-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-main); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.5s;">
     <div style="background: var(--bg-sidebar); padding: 40px; border-radius: 20px; box-shadow: var(--shadow-md); width: 90%; max-width: 350px; text-align: center;">
         <h2 style="margin-top: 0; color: var(--text-main);">паркетич</h2>
@@ -946,11 +963,17 @@
             }
 
             const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
+            window.lastDateString = null;
             for (let msg of history) {
-                // НОВОЕ: Если сообщение в нашем "черном списке", просто пропускаем его!
                 if (deletedLocally.includes(msg.id)) continue;
                 try {
                     const box = msg.secretBox;
+                    
+                    if (msg.sender === 'SYSTEM') {
+                        displayMessage(box.text, 'system-message', 'SYSTEM', new Date(msg.createdAt), false, '', false, false, false, msg.id);
+                        continue;
+                    }
+
                     const type = msg.sender === myUsername ? 'my-message' : 'other-message';
                     const senderPrefix = (currentChatIsGroup && type === 'other-message') ? `<b>${msg.sender}:</b><br>` : '';
                     
@@ -1024,12 +1047,18 @@
             }
         }
 
+        window.lastDateString = null;
         for (let msg of history) {
             if (deletedLocally.includes(msg.id)) continue;
 
             try {
                 const box = typeof msg.secretBox === 'string' ? JSON.parse(msg.secretBox) : msg.secretBox;
                 
+                if (msg.sender === 'SYSTEM') {
+                    displayMessage(box.text, 'system-message', 'SYSTEM', new Date(msg.createdAt), false, '', false, false, false, msg.id);
+                    continue;
+                }
+
                 // === 🛡️ ЛОГИКА ТЕЛЕГРАМ-КАНАЛА ===
                 if (currentGroupData && currentGroupData.isChannel) {
                     const isComment = box.isComment === true;
@@ -2405,6 +2434,26 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     // ИСПРАВЛЕНИЕ: Добавили параметр senderName для отрисовки аватарок
 // ИСПРАВЛЕНИЕ: Добавили параметр prepend = false в конец
     function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false, prepend = false, isEdited = false, forwardedFrom = null, waveform = null, duration = 0) {
+        const messagesList = document.getElementById('messages-list');
+        const dateStr = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        
+        if (dateStr !== window.lastDateString && !prepend) {
+            const sep = document.createElement('div');
+            sep.className = 'system-message-container';
+            sep.innerHTML = `<div class="system-message-pill">${dateStr}</div>`;
+            messagesList.appendChild(sep);
+            window.lastDateString = dateStr;
+        }
+
+        if (className === 'system-message') {
+            const sys = document.createElement('div');
+            sys.className = 'system-message-container';
+            sys.innerHTML = `<div class="system-message-pill">${content}</div>`;
+            if (prepend) messagesList.insertBefore(sys, messagesList.firstChild);
+            else messagesList.appendChild(sys);
+            return;
+        }
+
         const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         
@@ -3879,6 +3928,16 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
             const box = payload.secretBox;
             
+            // Если это системное сообщение (начало/конец звонка)
+            if (payload.sender === 'SYSTEM') {
+                const chatPartnerId = payload.isGroup ? null : (payload.sender === myUsername ? payload.recipient : payload.sender);
+                if ((payload.isGroup && payload.groupId === currentChatUser) || (!payload.isGroup && chatPartnerId === currentChatUser)) {
+                    displayMessage(box.text, 'system-message', 'SYSTEM', new Date(), false, '', false, false, false, payload.id);
+                    document.getElementById('messages-list').scrollTop = document.getElementById('messages-list').scrollHeight;
+                }
+                return;
+            }
+
             // Если это альбом, у него нет box.ciphertext, он расшифровывается по-другому!
             let decryptedBuffer = null;
             if (box.type !== 'ALBUM') {
@@ -4158,17 +4217,34 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             if (timerEl) timerEl.textContent = `${m}:${s}`;
         }, 1000);
     }
-    
+    let groupCallPollingTimer = null;
+
     window.checkGroupCallStatus = function(groupId) {
         document.getElementById('group-call-banner').style.display = 'none';
         clearInterval(groupCallBannerTimer);
+        clearInterval(groupCallPollingTimer);
         
-        socket.emit('check_group_call_status', { roomName: `group_call_${groupId}` }, (res) => {
-            if (res && res.active) {
-                document.getElementById('group-call-banner').style.display = 'flex';
-                startGroupCallBannerTimer(res.startTime);
+        const checkStatus = () => {
+            if (!currentChatIsGroup || currentChatUser !== groupId) {
+                clearInterval(groupCallPollingTimer);
+                return;
             }
-        });
+            socket.emit('check_group_call_status', { roomName: `group_call_${groupId}` }, (res) => {
+                if (res && res.active) {
+                    if (document.getElementById('group-call-banner').style.display === 'none') {
+                        document.getElementById('group-call-banner').style.display = 'flex';
+                        startGroupCallBannerTimer(res.startTime);
+                    }
+                } else {
+                    document.getElementById('group-call-banner').style.display = 'none';
+                    clearInterval(groupCallBannerTimer);
+                    clearInterval(groupCallPollingTimer);
+                }
+            });
+        };
+        
+        checkStatus();
+        groupCallPollingTimer = setInterval(checkStatus, 5000);
     };
     
     document.getElementById('join-group-call-btn').addEventListener('click', () => {

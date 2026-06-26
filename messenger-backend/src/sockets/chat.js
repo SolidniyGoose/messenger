@@ -9,6 +9,52 @@ const livekitApiSecret = process.env.LIVEKIT_API_SECRET || 'secret';
 const roomService = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret);
 
 module.exports = (io) => {
+    const activeCalls = new Map(); // roomName -> groupId
+
+    // Фоновая проверка пустых комнат
+    setInterval(async () => {
+        try {
+            const rooms = await roomService.listRooms();
+            const currentActive = new Set();
+            for (const room of rooms) {
+                if (room.numParticipants > 0) currentActive.add(room.name);
+            }
+
+            for (const [roomName, groupId] of activeCalls.entries()) {
+                if (!currentActive.has(roomName)) {
+                    activeCalls.delete(roomName); // Звонок завершен
+
+                    // Сохраняем системное сообщение
+                    const sysMsg = await prisma.message.create({
+                        data: {
+                            sender: 'SYSTEM',
+                            groupId: groupId,
+                            secretBox: { text: "Видеочат завершен", isSystem: true, type: "call_ended" },
+                            isRead: false
+                        }
+                    });
+
+                    const payload = {
+                        id: sysMsg.id,
+                        sender: 'SYSTEM',
+                        groupId: groupId,
+                        isGroup: true,
+                        secretBox: sysMsg.secretBox
+                    };
+
+                    // Рассылаем участникам
+                    const group = await prisma.group.findUnique({ where: { id: groupId }, include: { members: true } });
+                    if (group) {
+                        group.members.forEach(m => {
+                            const sId = onlineUsers.get(m.username);
+                            if (sId) io.to(sId).emit('receive_message', { text: JSON.stringify(payload) });
+                        });
+                    }
+                }
+            }
+        } catch(e) {}
+    }, 5000);
+
     io.on('connection', (socket) => {
         
         // --- ОБНОВЛЕННАЯ РЕГИСТРАЦИЯ СОКЕТА ---
@@ -44,14 +90,38 @@ module.exports = (io) => {
         socket.on('group_call_request', async (data) => {
             // data: { caller, groupId, roomName, isVideo, groupName }
             try {
-                const group = await prisma.group.findUnique({ where: { id: data.groupId }, include: { members: true } });
-                if (group) {
-                    group.members.forEach(m => {
-                        if (m.username !== data.caller) {
-                            const sId = onlineUsers.get(m.username);
-                            if (sId) io.to(sId).emit('group_call_started', data);
+                if (!activeCalls.has(data.roomName)) {
+                    activeCalls.set(data.roomName, data.groupId);
+                    
+                    const sysMsg = await prisma.message.create({
+                        data: {
+                            sender: 'SYSTEM',
+                            groupId: data.groupId,
+                            secretBox: { text: `${data.caller} начал(а) видеочат`, isSystem: true, type: "call_started" },
+                            isRead: false
                         }
                     });
+
+                    const payload = {
+                        id: sysMsg.id,
+                        sender: 'SYSTEM',
+                        groupId: data.groupId,
+                        isGroup: true,
+                        secretBox: sysMsg.secretBox
+                    };
+
+                    const group = await prisma.group.findUnique({ where: { id: data.groupId }, include: { members: true } });
+                    if (group) {
+                        group.members.forEach(m => {
+                            const sId = onlineUsers.get(m.username);
+                            if (sId) {
+                                io.to(sId).emit('receive_message', { text: JSON.stringify(payload) });
+                                if (m.username !== data.caller) {
+                                    io.to(sId).emit('group_call_started', data);
+                                }
+                            }
+                        });
+                    }
                 }
             } catch(e) { console.error("Ошибка group_call_request", e); }
         });
@@ -61,7 +131,7 @@ module.exports = (io) => {
             try {
                 const rooms = await roomService.listRooms();
                 const room = rooms.find(r => r.name === data.roomName);
-                if (room) {
+                if (room && room.numParticipants > 0) {
                     if (callback) callback({ active: true, startTime: Number(room.creationTime) });
                 } else {
                     if (callback) callback({ active: false });
