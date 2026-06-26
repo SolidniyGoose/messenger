@@ -2784,11 +2784,11 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 allChats.push({ id: g.id, name: g.name, isGroup: true, avatar: '/default-avatar.png' });
             });
             
-            personalChats.forEach(chat => {
-                const partner = chat.user1 === myUsername ? chat.user2 : chat.user1;
+            personalChats.forEach(partner => {
                 const userObj = allUsers.find(u => u.username === partner);
                 const avatar = userObj && userObj.avatar ? userObj.avatar : '/default-avatar.png';
-                allChats.push({ id: partner, name: partner, isGroup: false, avatar: avatar });
+                const displayName = userObj && userObj.displayName ? userObj.displayName : partner;
+                allChats.push({ id: partner, name: displayName, isGroup: false, avatar: avatar });
             });
 
             if (allChats.length === 0) {
@@ -2803,8 +2803,17 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 div.onmouseout = () => div.style.background = 'transparent';
                 
                 const icon = chat.isGroup ? '📢 ' : '';
+                
+                let avatarHtml = '';
+                if (chat.avatar && chat.avatar !== '/default-avatar.png') {
+                    avatarHtml = `<img src="${chat.avatar}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">`;
+                } else {
+                    const initial = chat.name.charAt(0).toUpperCase();
+                    avatarHtml = `<div style="width: 40px; height: 40px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: bold; flex-shrink: 0;">${initial}</div>`;
+                }
+                
                 div.innerHTML = `
-                    <img src="${chat.avatar}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                    ${avatarHtml}
                     <div style="flex: 1; color: var(--text-main); font-weight: 500;">${icon}${chat.name}</div>
                 `;
                 
