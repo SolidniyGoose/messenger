@@ -20,35 +20,44 @@ module.exports = (io) => {
                 if (room.numParticipants > 0) currentActive.add(room.name);
             }
 
-            for (const [roomName, groupId] of activeCalls.entries()) {
-                if (!currentActive.has(roomName)) {
-                    activeCalls.delete(roomName); // Звонок завершен
+            for (const [roomName, callData] of activeCalls.entries()) {
+                const isCurrentlyActive = currentActive.has(roomName);
+                
+                if (isCurrentlyActive) {
+                    callData.hasBeenJoined = true;
+                }
+                
+                if (!isCurrentlyActive) {
+                    // Если комната пуста, но она только что создана, даем 30 сек на подключение
+                    if (callData.hasBeenJoined || (Date.now() - callData.createdAt > 30000)) {
+                        activeCalls.delete(roomName); // Звонок завершен
 
-                    // Сохраняем системное сообщение
-                    const sysMsg = await prisma.message.create({
-                        data: {
-                            sender: 'SYSTEM',
-                            groupId: groupId,
-                            secretBox: { text: "Видеочат завершен", isSystem: true, type: "call_ended" },
-                            isRead: false
-                        }
-                    });
-
-                    const payload = {
-                        id: sysMsg.id,
-                        sender: 'SYSTEM',
-                        groupId: groupId,
-                        isGroup: true,
-                        secretBox: sysMsg.secretBox
-                    };
-
-                    // Рассылаем участникам
-                    const group = await prisma.group.findUnique({ where: { id: groupId }, include: { members: true } });
-                    if (group) {
-                        group.members.forEach(m => {
-                            const sId = onlineUsers.get(m.username);
-                            if (sId) io.to(sId).emit('receive_message', { text: JSON.stringify(payload) });
+                        // Сохраняем системное сообщение
+                        const sysMsg = await prisma.message.create({
+                            data: {
+                                sender: 'SYSTEM',
+                                groupId: callData.groupId,
+                                secretBox: { text: "Видеочат завершен", isSystem: true, type: "call_ended" },
+                                isRead: false
+                            }
                         });
+
+                        const payload = {
+                            id: sysMsg.id,
+                            sender: 'SYSTEM',
+                            groupId: callData.groupId,
+                            isGroup: true,
+                            secretBox: sysMsg.secretBox
+                        };
+
+                        // Рассылаем участникам
+                        const group = await prisma.group.findUnique({ where: { id: callData.groupId }, include: { members: true } });
+                        if (group) {
+                            group.members.forEach(m => {
+                                const sId = onlineUsers.get(m.username);
+                                if (sId) io.to(sId).emit('receive_message', { text: JSON.stringify(payload) });
+                            });
+                        }
                     }
                 }
             }
@@ -91,7 +100,7 @@ module.exports = (io) => {
             // data: { caller, groupId, roomName, isVideo, groupName }
             try {
                 if (!activeCalls.has(data.roomName)) {
-                    activeCalls.set(data.roomName, data.groupId);
+                    activeCalls.set(data.roomName, { groupId: data.groupId, createdAt: Date.now(), hasBeenJoined: false });
                     
                     const sysMsg = await prisma.message.create({
                         data: {
@@ -129,10 +138,13 @@ module.exports = (io) => {
         socket.on('check_group_call_status', async (data, callback) => {
             // data: { groupId, roomName }
             try {
+                const callData = activeCalls.get(data.roomName);
                 const rooms = await roomService.listRooms();
                 const room = rooms.find(r => r.name === data.roomName);
-                if (room && room.numParticipants > 0) {
-                    if (callback) callback({ active: true, startTime: Number(room.creationTime) });
+                
+                if ((room && room.numParticipants > 0) || (callData && (Date.now() - callData.createdAt < 30000))) {
+                    const startTime = (room && room.creationTime) ? Number(room.creationTime) : (callData ? callData.createdAt : Date.now());
+                    if (callback) callback({ active: true, startTime });
                 } else {
                     if (callback) callback({ active: false });
                 }
