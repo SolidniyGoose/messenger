@@ -2346,7 +2346,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     }
                     const previewTag = isVideo 
                         ? `<video src="${item.url}#t=0.1" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:4px;"></video>`
-                        : `<img src="${item.url}" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:4px;">`;
+                        : `<img src="${item.url}" onload="document.getElementById('messages-list').scrollTop = document.getElementById('messages-list').scrollHeight" style="position:absolute; top:0; left:0; width:100%; height:100%; object-fit:cover; border-radius:4px;">`;
 
                     gridHtml += `<div style="position:relative; width: 100%; padding-bottom: 100%; cursor:pointer;" onclick="openGallery('${encodedMediaString}', ${i})">${previewTag}${playIcon}${overlay}</div>`;
                 });
@@ -2355,7 +2355,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 // ИСПРАВЛЕНИЕ АЛЬБОМА: width: 320px; max-width: 100%;
                 innerContent = `<div style="display: grid; grid-template-columns: ${columns}; gap: 4px; width: 320px; max-width: 100%; border-radius: 8px; overflow: hidden; margin-bottom: 5px;">${gridHtml}</div>`;
             } else if (isImage) {
-                innerContent = `<img src="${content}" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" onclick="openGallery('${content}', 0)" />`;
+                innerContent = `<img src="${content}" onload="document.getElementById('messages-list').scrollTop = document.getElementById('messages-list').scrollHeight" class="chat-image" style="max-width: 100%; border-radius: 8px; cursor: pointer; transition: 0.2s;" onclick="openGallery('${content}', 0)" />`;
             } else if (fileName) {
                 innerContent = `<div style="display: flex; align-items: center; gap: 10px;">📄 <b>${fileName}</b></div>`;
             } else {
