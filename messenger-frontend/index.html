@@ -4068,13 +4068,13 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     const rejectCallBtn = document.getElementById('reject-call-btn');
 
     async function startCall(isVideo) {
-        if (!currentChat || currentChatIsGroup) return; 
+        if (!currentChatUser || currentChatIsGroup) return; 
         
         const roomName = `call_${Date.now()}`;
         
         socket.emit('call_request', {
             caller: myUsername,
-            recipient: currentChat,
+            recipient: currentChatUser,
             roomName: roomName,
             isVideo: isVideo
         });
@@ -4161,7 +4161,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     });
 
     function endCall() {
-        socket.emit('call_ended', { caller: myUsername, recipient: currentChat || (currentIncomingCall ? currentIncomingCall.caller : null) });
+        socket.emit('call_ended', { caller: myUsername, recipient: currentChatUser || (currentIncomingCall ? currentIncomingCall.caller : null) });
         endCallLocally();
     }
 
