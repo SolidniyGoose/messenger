@@ -32,7 +32,8 @@ app.use(helmet({
 
 const server = http.createServer(app);
 
-app.use('/rtc', createProxyMiddleware({ target: 'http://127.0.0.1:7880', ws: true, changeOrigin: true }));
+const livekitProxy = createProxyMiddleware({ target: 'http://127.0.0.1:7880', ws: true, changeOrigin: true });
+app.use('/rtc', livekitProxy);
 app.use('/twirp', createProxyMiddleware({ target: 'http://127.0.0.1:7880', changeOrigin: true }));
 
 app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
@@ -272,9 +273,16 @@ const io = new Server(server, {
         origin: '*',
         methods: ['GET', 'POST']
     },
-    maxHttpBufferSize: 5e7 // Увеличиваем лимит до 50 Мегабайт
+    maxHttpBufferSize: 5e7, // Увеличиваем лимит до 50 Мегабайт
+    destroyUpgrade: false // ВАЖНО: не убиваем другие websocket-соединения (LiveKit)
 });
 require('./sockets/chat')(io);
+
+server.on('upgrade', (req, socket, head) => {
+    if (req.url.startsWith('/rtc')) {
+        livekitProxy.upgrade(req, socket, head);
+    }
+});
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
