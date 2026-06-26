@@ -3046,6 +3046,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     mimeType: box.mimeType, 
                     fileName: box.fileName 
                 };
+                if (box.type === 'AUDIO') {
+                    newBox.waveform = box.waveform;
+                    newBox.duration = box.duration;
+                }
             }
 
             // 4. Отправляем на сервер
@@ -3832,7 +3836,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     return; // Игнорируем отрисовку самого сообщения, т.к. мы в другом окне
                 }
             } else {
-                if (payload.sender !== currentChatUser) {
+                const chatPartner = payload.sender === myUsername ? payload.recipient : payload.sender;
+                if (chatPartner !== currentChatUser) {
                     loadActiveChats(); // Обновляем сайдбар
                     return;
                 }
