@@ -4129,9 +4129,20 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     let groupCallBannerTimer = null;
     let currentGroupCallStartTime = 0;
     
-    function startGroupCallBannerTimer(startTimeStr) {
+    function startGroupCallBannerTimer(startTime) {
         clearInterval(groupCallBannerTimer);
-        currentGroupCallStartTime = new Date(startTimeStr).getTime();
+        // LiveKit gives creationTime in seconds (number). If it's a string from Date.toISOString(), parse it.
+        let startTimeMs;
+        if (typeof startTime === 'number') {
+            // LiveKit returns seconds, but sometimes milliseconds if parsed differently. 
+            // Usually it's seconds since epoch (e.g. 1700000000). Let's check length.
+            if (startTime < 10000000000) startTimeMs = startTime * 1000;
+            else startTimeMs = startTime;
+        } else {
+            startTimeMs = new Date(startTime).getTime();
+        }
+        
+        currentGroupCallStartTime = startTimeMs;
         const timerEl = document.getElementById('group-call-timer');
         
         groupCallBannerTimer = setInterval(() => {
@@ -4181,6 +4192,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         activeModal.style.display = 'flex';
         document.getElementById('call-status-text').textContent = 'Звоним в группу...';
         document.getElementById('call-status-text').style.display = 'block';
+        
+        document.getElementById('group-call-banner').style.display = 'flex';
+        startGroupCallBannerTimer(Date.now());
         
         joinLiveKitRoom(roomName, false);
     });
