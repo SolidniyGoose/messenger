@@ -3482,7 +3482,37 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             }
         } catch (e) { console.error("Ошибка пакета", e); }
     });
-    
+
+    socket.on('fetch_message', async (data) => {
+        try {
+            console.log("Получено уведомление о большом сообщении! Скачиваем...");
+            const res = await fetch(`/api/messages/single/${data.id}`);
+            if (res.ok) {
+                const msg = await res.json();
+                
+                // Эмулируем событие receive_message, чтобы отработала стандартная логика
+                const mockPayload = {
+                    id: msg.id,
+                    sender: msg.sender,
+                    recipient: msg.recipient,
+                    groupId: msg.groupId,
+                    isGroup: msg.groupId ? true : false,
+                    secretBox: msg.secretBox,
+                };
+                
+                // Если мы сейчас находимся в чате, куда пришло сообщение - запрашиваем его отрисовку
+                // Мы просто вызываем тот же колбэк receive_message, передавая туда скачанные данные!
+                const emitData = { text: JSON.stringify(mockPayload) };
+                
+                // Чтобы не дублировать логику, просто бросаем эмуляцию события
+                // Вызываем приватный обработчик или просто парсим прямо тут
+                const listeners = socket.listeners('receive_message');
+                if (listeners.length > 0) {
+                    listeners[0](emitData);
+                }
+            }
+        } catch (e) { console.error("Ошибка скачивания большого сообщения", e); }
+    });    
     // --- НОВОЕ: МЕНЯЕМ ОДНУ ГАЛОЧКУ НА ДВЕ В РЕАЛЬНОМ ВРЕМЕНИ ---
     socket.on('messages_were_read', (data) => {
         // Если мы сейчас в чате с тем, кто прочитал наши сообщения

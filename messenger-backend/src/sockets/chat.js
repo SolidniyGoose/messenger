@@ -114,7 +114,14 @@ module.exports = (io) => {
                     group.members.forEach(member => {
                         if (member.username !== payload.sender) {
                             const memberSocketId = onlineUsers.get(member.username);
-                            if (memberSocketId) io.to(memberSocketId).emit('receive_message', { text: JSON.stringify(payload) });
+                            if (memberSocketId) {
+                                const stringified = JSON.stringify(payload);
+                                if (stringified.length > 500000) {
+                                    io.to(memberSocketId).emit('fetch_message', { id: payload.id, isGroup: true, groupId: payload.groupId });
+                                } else {
+                                    io.to(memberSocketId).emit('receive_message', { text: stringified });
+                                }
+                            }
                         }
                     });
                 } else {
@@ -128,7 +135,14 @@ module.exports = (io) => {
                         }
                     });
                     const recipientSocketId = onlineUsers.get(payload.recipient);
-                    if (recipientSocketId) io.to(recipientSocketId).emit('receive_message', { text: JSON.stringify(payload) });
+                    if (recipientSocketId) {
+                        const stringified = JSON.stringify(payload);
+                        if (stringified.length > 500000) {
+                            io.to(recipientSocketId).emit('fetch_message', { id: payload.id, isGroup: false, sender: payload.sender });
+                        } else {
+                            io.to(recipientSocketId).emit('receive_message', { text: stringified });
+                        }
+                    }
                 }
             } catch (e) { console.error("Ошибка записи в базу:", e); }
         });

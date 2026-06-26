@@ -81,6 +81,20 @@ app.get('/api/history/:user1/:user2', async (req, res) => {
     }
 });
 
+// --- ЭНДПОИНТ ДЛЯ ПОЛУЧЕНИЯ ОДНОГО СООБЩЕНИЯ ---
+app.get('/api/messages/single/:id', async (req, res) => {
+    try {
+        const msg = await prisma.message.findUnique({
+            where: { id: req.params.id }
+        });
+        if (msg) res.json(msg);
+        else res.status(404).json({ error: "Не найдено" });
+    } catch (e) {
+        console.error("Ошибка загрузки сообщения:", e);
+        res.status(500).json({ error: "Ошибка" });
+    }
+});
+
 // --- ОБНОВЛЕННЫЙ ЭНДПОИНТ СОЗДАНИЯ ---
 app.post('/api/groups/create', async (req, res) => {
     try {
