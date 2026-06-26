@@ -59,9 +59,9 @@ module.exports = (io) => {
         socket.on('check_group_call_status', async (data, callback) => {
             // data: { groupId, roomName }
             try {
-                const rooms = await roomService.listRooms([data.roomName]);
-                if (rooms && rooms.length > 0) {
-                    const room = rooms[0];
+                const rooms = await roomService.listRooms();
+                const room = rooms.find(r => r.name === data.roomName);
+                if (room) {
                     if (callback) callback({ active: true, startTime: room.creationTime });
                 } else {
                     if (callback) callback({ active: false });
