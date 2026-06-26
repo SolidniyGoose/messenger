@@ -4199,6 +4199,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const { token } = await res.json();
             
             let e2eeConfig = undefined;
+            // E2EE ТЕПЕРЬ ОТКЛЮЧЕН ДЛЯ ТЕСТА СОЕДИНЕНИЯ
+            /*
             if (currentSharedKey && LivekitClient.supportsE2EE()) {
                 const e2eeProvider = new LivekitClient.E2EEProvider();
                 const keyProvider = new LivekitClient.BaseKeyProvider();
@@ -4207,10 +4209,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 e2eeProvider.setKeyProvider(keyProvider);
                 e2eeConfig = { e2ee: e2eeProvider };
             }
-            
-            // Если деплоим, LiveKit будет на 7880 порту
+            */
+            // Теперь подключаемся к нашему бэкенду (он сам проксирует на 7880)
             const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-            const livekitUrl = `${protocol}://${window.location.hostname}:7880`;
+            const livekitUrl = `${protocol}://${window.location.host}`;
             
             const room = new LivekitClient.Room(e2eeConfig);
             currentRoom = room;
@@ -4253,7 +4255,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             
         } catch (e) {
             console.error("Ошибка LiveKit:", e);
-            alert("Не удалось подключиться к звонку");
+            alert("Не удалось подключиться к звонку:\n" + (e.message || JSON.stringify(e)));
             endCall();
         }
     }

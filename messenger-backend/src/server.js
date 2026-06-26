@@ -10,6 +10,8 @@ const prisma = new PrismaClient();
 const app = express();
 
 // --- 🛡️ НАСТРОЙКА БЕЗОПАСНОСТИ (CSP) ---
+const { createProxyMiddleware } = require('http-proxy-middleware');
+
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -29,6 +31,9 @@ app.use(helmet({
 }));
 
 const server = http.createServer(app);
+
+app.use('/rtc', createProxyMiddleware({ target: 'http://127.0.0.1:7880', ws: true, changeOrigin: true }));
+app.use('/twirp', createProxyMiddleware({ target: 'http://127.0.0.1:7880', changeOrigin: true }));
 
 app.use(cors({ origin: '*', methods: ['GET', 'POST'] }));
 app.use(express.json({ limit: '50mb' }));
