@@ -4407,7 +4407,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             await room.connect(livekitUrl, token);
             
             createParticipantCell(myUsername);
-            room.participants.forEach(p => {
+            room.remoteParticipants.forEach(p => {
                 createParticipantCell(p.identity);
             });
             
