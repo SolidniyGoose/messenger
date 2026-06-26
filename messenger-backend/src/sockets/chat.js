@@ -62,7 +62,7 @@ module.exports = (io) => {
                 const rooms = await roomService.listRooms();
                 const room = rooms.find(r => r.name === data.roomName);
                 if (room) {
-                    if (callback) callback({ active: true, startTime: room.creationTime });
+                    if (callback) callback({ active: true, startTime: Number(room.creationTime) });
                 } else {
                     if (callback) callback({ active: false });
                 }
