@@ -914,6 +914,11 @@
         });
         // -------------------------------------------------------
 
+        // Скрываем баннеры групп
+        document.getElementById('thread-banner').style.display = 'none';
+        document.getElementById('group-call-banner').style.display = 'none';
+        clearInterval(groupCallBannerTimer);
+
         currentChatUser = user.username;
         currentChatIsGroup = false; // Обычный чат, не группа
         loadActiveChats(); 

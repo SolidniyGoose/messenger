@@ -3,7 +3,7 @@ const prisma = new PrismaClient();
 const onlineUsers = new Map(); 
 
 const { RoomServiceClient } = require('livekit-server-sdk');
-const livekitUrl = 'http://127.0.0.1:7880';
+const livekitUrl = process.env.LIVEKIT_URL || 'https://parketi.ch';
 const livekitApiKey = process.env.LIVEKIT_API_KEY || 'devkey';
 const livekitApiSecret = process.env.LIVEKIT_API_SECRET || 'secret';
 const roomService = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret);
