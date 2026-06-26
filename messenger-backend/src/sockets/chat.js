@@ -235,7 +235,7 @@ module.exports = (io) => {
                 // Сохраняем в базу
                 await prisma.message.update({
                     where: { id: messageId },
-                    data: { reactions: reactions }
+                    data: { reactions: JSON.stringify(reactions) }
                 });
 
                 // Рассылаем обновление всем участникам
