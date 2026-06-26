@@ -205,6 +205,9 @@
         </div>
 
     <div style="padding: 5px 0;">
+        <button id="ctx-edit-btn" style="width: 100%; padding: 12px 20px; background: transparent; border: none; color: var(--text-main); font-size: 14px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.1s;" onmouseover="this.style.background='rgba(128,128,128,0.2)'" onmouseout="this.style.background='transparent'">
+            <span style="font-size: 18px;">✏️</span> Изменить
+        </button>
         <button id="ctx-reply-btn" style="width: 100%; padding: 12px 20px; background: transparent; border: none; color: var(--text-main); font-size: 14px; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 12px; transition: 0.1s;" onmouseover="this.style.background='rgba(128,128,128,0.2)'" onmouseout="this.style.background='transparent'">
             <span style="font-size: 18px;">↩️</span> Ответить
         </button>
@@ -299,6 +302,13 @@
     <div class="messages" id="messages-list"></div>
 
     <div class="input-area-wrapper">
+        <div id="edit-banner" style="display: none; padding: 10px 15px; background: rgba(0,0,0,0.2); border-left: 3px solid var(--primary-color); align-items: center; justify-content: space-between; border-radius: 10px 10px 0 0;">
+            <div style="display: flex; flex-direction: column; overflow: hidden;">
+                <span style="color: var(--primary-color); font-weight: 600; font-size: 13px;">Редактирование</span>
+                <span id="edit-text" style="color: var(--text-muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Текст</span>
+            </div>
+            <button id="cancel-edit-btn" style="background: none; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer;">&times;</button>
+        </div>
         <div id="reply-banner" style="display: none; padding: 10px 15px; background: rgba(0,0,0,0.2); border-left: 3px solid var(--primary-color); align-items: center; justify-content: space-between; border-radius: 10px 10px 0 0;">
             <div style="display: flex; flex-direction: column; overflow: hidden;">
                 <span id="reply-sender" style="color: var(--primary-color); font-weight: 600; font-size: 13px;">Имя</span>
@@ -406,6 +416,7 @@
 
     // --- ПЕРЕМЕННЫЕ ДЛЯ ОТВЕТОВ И УДАЛЕНИЯ ---
     let activeReply = null; // Хранит данные сообщения, на которое мы отвечаем
+    let activeEdit = null;
     let selectedMessageId = null; // Хранит ID сообщения, по которому мы кликнули
     const replyBanner = document.getElementById('reply-banner');
     
@@ -864,7 +875,7 @@
                         if (decryptedBuffer) {
                             const text = escapeHTML(bufferToText(decryptedBuffer));
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
-                            displayMessage(displayText, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
+                            displayMessage(displayText, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, false, false, msg.isEdited);
                             if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                         }
                     } else if (box.type === 'ALBUM') {
@@ -955,8 +966,8 @@
                 const senderPrefix = (type === 'other-message') ? `<b>${escapeHTML(msg.sender)}:</b><br>` : '';
                 
                 // Функция-обертка, чтобы добавить кнопку "Комментарии"
-                const renderWithCommentBtn = (contentHtml, senderName, type, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum) => {
-                    displayMessage(contentHtml, type, senderName, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum);
+                const renderWithCommentBtn = (contentHtml, senderName, type, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum, isEdited = false) => {
+                    displayMessage(contentHtml, type, senderName, date, isImage, fileName, isRead, isAudio, isCircle, msgId, replyTo, isAlbum, false, isEdited);
                     if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
                     
                     // Если мы в режиме канала и это пост - приклеиваем под него кнопку
@@ -982,7 +993,7 @@
                     if (decryptedBuffer) {
                         const text = escapeHTML(bufferToText(decryptedBuffer));
                         const displayText = type === 'other-message' ? senderPrefix + text : text;
-                        renderWithCommentBtn(displayText, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo);
+                        renderWithCommentBtn(displayText, type, senderName, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, false, msg.isEdited);
                     }
                 } else if (box.type === 'ALBUM') {
                     const mediaUrls = [];
@@ -2230,7 +2241,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     // --- 2. ОТРИСОВКА СООБЩЕНИЙ (ВСЕ ФОРМАТЫ) ---
     // ИСПРАВЛЕНИЕ: Добавили параметр senderName для отрисовки аватарок
 // ИСПРАВЛЕНИЕ: Добавили параметр prepend = false в конец
-    function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false, prepend = false) {        const msgDiv = document.createElement('div');
+    function displayMessage(content, className, senderName, dateObj = new Date(), isImage = false, fileName = '', isRead = false, isAudio = false, isCircleVideo = false, messageId = null, replyData = null, isAlbum = false, prepend = false, isEdited = false) {        const msgDiv = document.createElement('div');
         const timeString = dateObj.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
         
         // Обертка для сообщения и аватарки (Flexbox)
@@ -2349,12 +2360,13 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 innerContent = `<div style="display: flex; align-items: center; gap: 10px;">📄 <b>${fileName}</b></div>`;
             } else {
                 msgDiv.classList.add('text-message');
-                innerContent = content; 
+                innerContent = `<span class="msg-text-content">${content}</span>`; 
             }
 
             // В конце формирования innerHTML добавьте это:
             const reactionsHtml = `<div class="reactions-holder" style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px;"></div>`;
-            msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${timeString}${statusHtml}</span>${reactionsHtml}`;
+            const editedHtml = isEdited ? `<span style="font-size: 10px; margin-right: 4px; opacity: 0.7;">(изменено)</span>` : '';
+            msgDiv.innerHTML = `${replyHtml}${innerContent} <span class="meta">${editedHtml}${timeString}${statusHtml}</span>${reactionsHtml}`;
         }
 
         // Собираем всё в обертку
@@ -2373,6 +2385,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             msgCtxMenu.style.display = 'flex';
             
             document.getElementById('ctx-delete-btn').style.display = className === 'my-message' ? 'flex' : 'none';
+            document.getElementById('ctx-edit-btn').style.display = (className === 'my-message' && !isImage && !isCircleVideo && !fileName && !isAudio && !isAlbum) ? 'flex' : 'none';
             
             // Если это медиафайл - прячем кнопку копирования
             const isMedia = (isImage || isCircleVideo || fileName || isAudio || isAlbum);
@@ -2519,6 +2532,28 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const dataBuffer = textToBuffer(text);
             const encryptedData = await encryptMessage(dataBuffer, currentSharedKey);
 
+            if (activeEdit) {
+                const payload = {
+                    messageId: activeEdit,
+                    sender: myUsername,
+                    recipient: currentChatIsGroup ? null : currentChatUser,
+                    groupId: currentChatIsGroup ? currentChatUser : null,
+                    isGroup: currentChatIsGroup,
+                    secretBox: { 
+                        ...encryptedData, 
+                        type: 'TEXT',
+                        isEdited: true
+                    }
+                };
+                
+                socket.emit('edit_message', payload);
+                messageInput.value = '';
+                activeEdit = null;
+                document.getElementById('edit-banner').style.display = 'none';
+                if (window.innerWidth > 768) messageInput.focus(); 
+                return;
+            }
+
             // ТРЮК: Прячем тип сообщения прямо в secretBox, чтобы не менять БД!
             // ВАЖНО: Браузер должен правильно запаковать группу!
             const payload = {
@@ -2541,6 +2576,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 secretBox: payload.secretBox,
                 createdAt: new Date().toISOString(),
                 isRead: false,
+                isEdited: false
             });
 
             socket.emit('send_message', { text: JSON.stringify(payload) });
@@ -2674,8 +2710,35 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             text: document.getElementById('reply-text').textContent
         };
         replyBanner.style.display = 'flex';
+        
+        // Скрываем редактирование, если было
+        activeEdit = null;
+        document.getElementById('edit-banner').style.display = 'none';
+        
         closeMsgMenu();
         messageInput.focus();
+    });
+
+    // Кнопка "Изменить"
+    document.getElementById('ctx-edit-btn').addEventListener('click', () => {
+        activeEdit = selectedMessageId;
+        const textToEdit = selectedTextToCopy;
+        document.getElementById('edit-text').textContent = textToEdit;
+        document.getElementById('edit-banner').style.display = 'flex';
+        
+        // Скрываем reply, если он был
+        activeReply = null;
+        replyBanner.style.display = 'none';
+        
+        messageInput.value = textToEdit;
+        closeMsgMenu();
+        messageInput.focus();
+    });
+
+    document.getElementById('cancel-edit-btn').addEventListener('click', () => {
+        activeEdit = null;
+        document.getElementById('edit-banner').style.display = 'none';
+        messageInput.value = '';
     });
 
     // --- ИСПРАВЛЕНИЕ БАГА: КРЕСТИК ОТМЕНЫ ОТВЕТА ---
@@ -2730,6 +2793,50 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         APP_CACHE.history.forEach((historyArray, key) => {
             APP_CACHE.history.set(key, historyArray.filter(msg => msg.id !== msgId));
         });
+    });
+
+    // Слушатель от сервера: Сообщение изменено
+    socket.on('message_edited', async (data) => {
+        // 1. Обновляем кэш
+        APP_CACHE.history.forEach((historyArray, key) => {
+            const msg = historyArray.find(m => m.id === data.messageId);
+            if (msg) {
+                msg.secretBox = data.secretBox;
+                msg.isEdited = true;
+            }
+        });
+
+        // 2. Обновляем DOM, если сообщение сейчас на экране
+        const msgEl = document.getElementById(`msg-${data.messageId}`);
+        if (msgEl && currentSharedKey) {
+            try {
+                const decryptedBuffer = await decryptMessage(data.secretBox, currentSharedKey);
+                if (decryptedBuffer) {
+                    let text = escapeHTML(bufferToText(decryptedBuffer));
+                    
+                    // Восстанавливаем префикс для групп
+                    if (currentChatIsGroup && msgEl.classList.contains('other-message')) {
+                        // Берем имя из текущего контента, если оно там есть
+                        const textSpan = msgEl.querySelector('.msg-text-content');
+                        if (textSpan && textSpan.innerHTML.startsWith('<b>')) {
+                            const senderName = textSpan.querySelector('b').textContent;
+                            text = `<b>${senderName}</b><br>` + text;
+                        }
+                    }
+
+                    const contentSpan = msgEl.querySelector('.msg-text-content');
+                    if (contentSpan) contentSpan.innerHTML = text;
+
+                    // Обновляем метку (изменено)
+                    const metaSpan = msgEl.querySelector('.meta');
+                    if (metaSpan && !metaSpan.innerHTML.includes('(изменено)')) {
+                        metaSpan.innerHTML = `<span style="font-size: 10px; margin-right: 4px; opacity: 0.7;">(изменено)</span>` + metaSpan.innerHTML;
+                    }
+                }
+            } catch (e) {
+                console.error("Ошибка при обновлении UI отредактированного сообщения:", e);
+            }
+        }
     });
 
     socket.on('reaction_updated', ({ messageId, reactions }) => {

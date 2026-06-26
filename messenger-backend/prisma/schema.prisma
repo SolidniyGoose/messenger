@@ -23,7 +23,8 @@ model Message {
   recipient   String
 groupId   String?  // НОВОЕ: ID группы (если это групповое сообщение)   
   secretBox   Json     
-  isRead      Boolean  @default(false) // <--- НОВОЕ ПОЛЕ
+  isRead      Boolean  @default(false)
+  isEdited    Boolean  @default(false) // <--- НОВОЕ ПОЛЕ
   createdAt   DateTime @default(now())
 }
 // --- НОВЫЕ ТАБЛИЦЫ ДЛЯ ГРУПП ---

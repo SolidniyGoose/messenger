@@ -154,8 +154,50 @@ module.exports = (io) => {
                     if (recipientSocketId) io.to(recipientSocketId).emit('message_deleted', data.messageId);
                     if (senderSocketId) io.to(senderSocketId).emit('message_deleted', data.messageId); // Отправляем и себе для синхронизации
                 }
-            } catch (e) { console.error("Ошибка при удалении сообщения:", e); }
         });
+
+        // --- НОВОЕ: РЕДАКТИРОВАНИЕ СООБЩЕНИЯ ---
+        socket.on('edit_message', async (data) => {
+            try {
+                // Ищем сообщение
+                const msg = await prisma.message.findUnique({ where: { id: data.messageId } });
+                if (!msg) return;
+                
+                // Проверяем, что редактирует автор
+                if (msg.sender !== data.sender) {
+                    console.warn(`[SOCKET] Отклонено редактирование: ${data.sender} не является автором сообщения ${data.messageId}`);
+                    return;
+                }
+
+                // Обновляем в БД
+                await prisma.message.update({
+                    where: { id: data.messageId },
+                    data: {
+                        secretBox: data.secretBox,
+                        isEdited: true
+                    }
+                });
+
+                // Рассылаем обновление участникам
+                if (data.isGroup) {
+                    const group = await prisma.group.findUnique({ where: { id: data.groupId }, include: { members: true } });
+                    if (group) {
+                        group.members.forEach(m => {
+                            const sId = onlineUsers.get(m.username);
+                            if (sId) io.to(sId).emit('message_edited', { messageId: data.messageId, secretBox: data.secretBox });
+                        });
+                    }
+                } else {
+                    const recipientSocketId = onlineUsers.get(data.recipient);
+                    const senderSocketId = onlineUsers.get(data.sender);
+                    if (recipientSocketId) io.to(recipientSocketId).emit('message_edited', { messageId: data.messageId, secretBox: data.secretBox });
+                    if (senderSocketId) io.to(senderSocketId).emit('message_edited', { messageId: data.messageId, secretBox: data.secretBox });
+                }
+            } catch (e) {
+                console.error("Ошибка при редактировании сообщения:", e);
+            }
+        });
+
         // --- ЛОГИКА РЕАКЦИЙ ---
         socket.on('send_reaction', async ({ messageId, emoji, username, isGroup, chatId }) => {
             try {
