@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>паркетич</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 </head>
 <body>
 <div id="auth-modal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg-main); z-index: 9999; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: opacity 0.5s;">
@@ -36,6 +37,43 @@
 
         </div>
     </div>
+
+<!-- ИНТЕРФЕЙС ВХОДЯЩЕГО ЗВОНКА -->
+<div id="incoming-call-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000; justify-content: center; align-items: center; backdrop-filter: blur(10px);">
+    <div style="background: var(--bg-sidebar); width: 90%; max-width: 320px; border-radius: 30px; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 10px 40px rgba(0,0,0,0.5); text-align: center;">
+        <div id="incoming-call-avatar" style="width: 100px; height: 100px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 40px; font-weight: bold; margin-bottom: 20px; box-shadow: 0 0 20px var(--primary-color);"></div>
+        <h2 id="incoming-call-name" style="margin: 0 0 10px 0; color: var(--text-main); font-size: 24px;">Имя</h2>
+        <p id="incoming-call-type" style="margin: 0 0 40px 0; color: var(--text-muted); font-size: 16px;">Входящий звонок...</p>
+        
+        <div style="display: flex; gap: 30px; width: 100%; justify-content: center;">
+            <button id="reject-call-btn" style="width: 70px; height: 70px; border-radius: 50%; background: #ff3b30; color: white; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(255,59,48,0.4); transition: transform 0.2s;">
+                <span style="transform: rotate(135deg);">📞</span>
+            </button>
+            <button id="accept-call-btn" style="width: 70px; height: 70px; border-radius: 50%; background: #34c759; color: white; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(52,199,89,0.4); transition: transform 0.2s;">
+                📞
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ИНТЕРФЕЙС АКТИВНОГО ЗВОНКА (LIVEKIT) -->
+<div id="active-call-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #111; z-index: 9000; flex-direction: column;">
+    <div id="video-grid" style="flex: 1; display: grid; grid-template-columns: 1fr; grid-template-rows: 1fr; gap: 10px; padding: 10px; position: relative;">
+        <video id="remote-video" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover; border-radius: 15px; background: #222; display: none;"></video>
+        <video id="local-video" autoplay playsinline muted style="width: 120px; height: 160px; object-fit: cover; border-radius: 10px; position: absolute; bottom: 20px; right: 20px; background: #333; box-shadow: 0 5px 15px rgba(0,0,0,0.5); z-index: 2; display: none;"></video>
+        <div id="remote-audio-only-avatar" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 120px; height: 120px; border-radius: 50%; background: var(--gradient-primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 50px; font-weight: bold; z-index: 1;"></div>
+        <div id="call-status-text" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 15px; font-size: 14px; z-index: 2;">Соединение...</div>
+    </div>
+    
+    <div style="height: 100px; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; gap: 20px; padding-bottom: env(safe-area-inset-bottom);">
+        <button id="toggle-mic-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">🎤</button>
+        <button id="toggle-cam-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">📷</button>
+        <button id="end-call-btn" style="width: 60px; height: 60px; border-radius: 50%; background: #ff3b30; color: white; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 0 15px rgba(255,59,48,0.5);">
+            <span style="transform: rotate(135deg); display: inline-block;">📞</span>
+        </button>
+    </div>
+    <audio id="remote-audio" autoplay></audio>
+</div>
 
 <div id="contacts-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
     <div style="background: var(--bg-sidebar); width: 90%; max-width: 400px; border-radius: 20px; padding: 20px; max-height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow-md);">
@@ -4001,6 +4039,265 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             }
 
             isFetchingHistory = false;
+        }
+    });
+
+    // ==========================================
+    // ЗВОНКИ (LIVEKIT & SIGNALING)
+    // ==========================================
+    
+    let currentRoom = null;
+    let localTracks = [];
+    let isCallActive = false;
+    let pendingCallTimeout = null;
+
+    const incomingModal = document.getElementById('incoming-call-modal');
+    const activeModal = document.getElementById('active-call-modal');
+    const localVideoEl = document.getElementById('local-video');
+    const remoteVideoEl = document.getElementById('remote-video');
+    const remoteAudioEl = document.getElementById('remote-audio');
+    const incomingName = document.getElementById('incoming-call-name');
+    const incomingAvatar = document.getElementById('incoming-call-avatar');
+    
+    const personalCallBtn = document.getElementById('personal-call-btn');
+    const personalVideoBtn = document.getElementById('personal-video-btn');
+    const toggleMicBtn = document.getElementById('toggle-mic-btn');
+    const toggleCamBtn = document.getElementById('toggle-cam-btn');
+    const endCallBtn = document.getElementById('end-call-btn');
+    const acceptCallBtn = document.getElementById('accept-call-btn');
+    const rejectCallBtn = document.getElementById('reject-call-btn');
+
+    async function startCall(isVideo) {
+        if (!currentChat || currentChatIsGroup) return; 
+        
+        const roomName = `call_${Date.now()}`;
+        
+        socket.emit('call_request', {
+            caller: myUsername,
+            recipient: currentChat,
+            roomName: roomName,
+            isVideo: isVideo
+        });
+        
+        activeModal.style.display = 'flex';
+        document.getElementById('call-status-text').textContent = 'Звоним...';
+        document.getElementById('call-status-text').style.display = 'block';
+        
+        pendingCallTimeout = setTimeout(() => {
+            endCall();
+        }, 30000);
+    }
+
+    personalCallBtn.addEventListener('click', () => startCall(false));
+    personalVideoBtn.addEventListener('click', () => startCall(true));
+
+    let currentIncomingCall = null;
+    
+    socket.on('incoming_call', (data) => {
+        if (isCallActive) {
+            socket.emit('call_rejected', { caller: data.caller, recipient: myUsername });
+            return;
+        }
+        
+        currentIncomingCall = data;
+        incomingName.textContent = data.caller;
+        incomingAvatar.textContent = data.caller[0].toUpperCase();
+        incomingModal.style.display = 'flex';
+        
+        pendingCallTimeout = setTimeout(() => {
+            incomingModal.style.display = 'none';
+            currentIncomingCall = null;
+        }, 30000);
+    });
+
+    rejectCallBtn.addEventListener('click', () => {
+        if (currentIncomingCall) {
+            socket.emit('call_rejected', { caller: currentIncomingCall.caller, recipient: myUsername });
+        }
+        incomingModal.style.display = 'none';
+        clearTimeout(pendingCallTimeout);
+        currentIncomingCall = null;
+    });
+
+    acceptCallBtn.addEventListener('click', async () => {
+        if (!currentIncomingCall) return;
+        
+        clearTimeout(pendingCallTimeout);
+        incomingModal.style.display = 'none';
+        activeModal.style.display = 'flex';
+        document.getElementById('call-status-text').textContent = 'Соединение...';
+        document.getElementById('call-status-text').style.display = 'block';
+        
+        socket.emit('call_accepted', {
+            caller: currentIncomingCall.caller,
+            recipient: myUsername,
+            roomName: currentIncomingCall.roomName
+        });
+        
+        await joinLiveKitRoom(currentIncomingCall.roomName, currentIncomingCall.isVideo);
+        currentIncomingCall = null;
+    });
+
+    socket.on('call_accepted_by_recipient', async (data) => {
+        clearTimeout(pendingCallTimeout);
+        document.getElementById('call-status-text').textContent = 'Соединено!';
+        setTimeout(() => document.getElementById('call-status-text').style.display = 'none', 2000);
+        
+        await joinLiveKitRoom(data.roomName, data.isVideo); 
+    });
+
+    socket.on('call_rejected_by_recipient', () => {
+        clearTimeout(pendingCallTimeout);
+        endCall();
+        alert('Собеседник отклонил вызов');
+    });
+
+    socket.on('call_ended_by_peer', () => {
+        endCallLocally();
+    });
+
+    endCallBtn.addEventListener('click', () => {
+        endCall();
+    });
+
+    function endCall() {
+        socket.emit('call_ended', { caller: myUsername, recipient: currentChat || (currentIncomingCall ? currentIncomingCall.caller : null) });
+        endCallLocally();
+    }
+
+    function endCallLocally() {
+        if (currentRoom) {
+            currentRoom.disconnect();
+            currentRoom = null;
+        }
+        localTracks.forEach(t => {
+            t.stop();
+        });
+        localTracks = [];
+        
+        activeModal.style.display = 'none';
+        incomingModal.style.display = 'none';
+        isCallActive = false;
+        
+        localVideoEl.srcObject = null;
+        remoteVideoEl.srcObject = null;
+        localVideoEl.style.display = 'none';
+        remoteVideoEl.style.display = 'none';
+        document.getElementById('remote-audio-only-avatar').style.display = 'flex';
+        document.getElementById('remote-audio-only-avatar').textContent = '';
+    }
+
+    async function joinLiveKitRoom(roomName, enableVideo) {
+        try {
+            isCallActive = true;
+            
+            const res = await fetch('/api/calls/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomName: roomName, participantName: myUsername })
+            });
+            const { token } = await res.json();
+            
+            let e2eeConfig = undefined;
+            if (currentSharedKey && LivekitClient.supportsE2EE()) {
+                const e2eeProvider = new LivekitClient.E2EEProvider();
+                const keyProvider = new LivekitClient.BaseKeyProvider();
+                const keyHex = Array.from(currentSharedKey).map(b => b.toString(16).padStart(2,'0')).join('');
+                await keyProvider.setKey(keyHex); 
+                e2eeProvider.setKeyProvider(keyProvider);
+                e2eeConfig = { e2ee: e2eeProvider };
+            }
+            
+            // Если деплоим, LiveKit будет на 7880 порту
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const livekitUrl = `${protocol}://${window.location.hostname}:7880`;
+            
+            const room = new LivekitClient.Room(e2eeConfig);
+            currentRoom = room;
+            
+            room.on(LivekitClient.RoomEvent.TrackSubscribed, (track, publication, participant) => {
+                if (track.kind === LivekitClient.Track.Kind.Video) {
+                    track.attach(remoteVideoEl);
+                    remoteVideoEl.style.display = 'block';
+                    document.getElementById('remote-audio-only-avatar').style.display = 'none';
+                } else if (track.kind === LivekitClient.Track.Kind.Audio) {
+                    track.attach(remoteAudioEl);
+                }
+                document.getElementById('remote-audio-only-avatar').textContent = participant.identity[0].toUpperCase();
+            });
+            
+            room.on(LivekitClient.RoomEvent.TrackUnsubscribed, (track) => {
+                track.detach();
+                if (track.kind === LivekitClient.Track.Kind.Video) {
+                    remoteVideoEl.style.display = 'none';
+                    document.getElementById('remote-audio-only-avatar').style.display = 'flex';
+                }
+            });
+
+            await room.connect(livekitUrl, token);
+            
+            const tracks = await LivekitClient.createLocalTracks({
+                audio: true,
+                video: enableVideo ? { resolution: LivekitClient.VideoPresets.h720.resolution } : false
+            });
+            
+            localTracks = tracks;
+            
+            for (const track of tracks) {
+                await room.localParticipant.publishTrack(track);
+                if (track.kind === LivekitClient.Track.Kind.Video) {
+                    track.attach(localVideoEl);
+                    localVideoEl.style.display = 'block';
+                }
+            }
+            
+        } catch (e) {
+            console.error("Ошибка LiveKit:", e);
+            alert("Не удалось подключиться к звонку");
+            endCall();
+        }
+    }
+    
+    toggleMicBtn.addEventListener('click', () => {
+        if (!currentRoom) return;
+        const audioTrack = localTracks.find(t => t.kind === LivekitClient.Track.Kind.Audio);
+        if (audioTrack) {
+            if (audioTrack.isMuted) {
+                audioTrack.unmute();
+                toggleMicBtn.textContent = '🎤';
+                toggleMicBtn.style.background = 'rgba(255,255,255,0.2)';
+            } else {
+                audioTrack.mute();
+                toggleMicBtn.textContent = '🔇';
+                toggleMicBtn.style.background = '#ff3b30';
+            }
+        }
+    });
+
+    toggleCamBtn.addEventListener('click', async () => {
+        if (!currentRoom) return;
+        let videoTrack = localTracks.find(t => t.kind === LivekitClient.Track.Kind.Video);
+        if (videoTrack) {
+            if (videoTrack.isMuted) {
+                videoTrack.unmute();
+                toggleCamBtn.textContent = '📷';
+                toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
+            } else {
+                videoTrack.mute();
+                toggleCamBtn.textContent = '🚫';
+                toggleCamBtn.style.background = '#ff3b30';
+            }
+        } else {
+            try {
+                const newTracks = await LivekitClient.createLocalTracks({ audio: false, video: true });
+                videoTrack = newTracks[0];
+                localTracks.push(videoTrack);
+                await currentRoom.localParticipant.publishTrack(videoTrack);
+                videoTrack.attach(localVideoEl);
+                localVideoEl.style.display = 'block';
+                toggleCamBtn.textContent = '📷';
+                toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
+            } catch (e) { console.error("Ошибка камеры", e); }
         }
     });
 </script>

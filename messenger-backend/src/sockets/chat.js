@@ -28,6 +28,38 @@ module.exports = (io) => {
             }
         });
 
+        // --- ЗВОНКИ (LIVEKIT SIGNALING) ---
+        socket.on('call_request', (data) => {
+            // data: { caller, recipient, roomName, isVideo }
+            const sId = onlineUsers.get(data.recipient);
+            if (sId) io.to(sId).emit('incoming_call', data);
+        });
+
+        socket.on('call_accepted', (data) => {
+            // data: { caller, recipient, roomName }
+            const sId = onlineUsers.get(data.caller);
+            if (sId) io.to(sId).emit('call_accepted_by_recipient', data);
+        });
+
+        socket.on('call_rejected', (data) => {
+            // data: { caller, recipient }
+            const sId = onlineUsers.get(data.caller);
+            if (sId) io.to(sId).emit('call_rejected_by_recipient', data);
+        });
+
+        socket.on('call_ended', (data) => {
+            // data: { caller, recipient }
+            // Оповещаем обоих, чтобы они закрыли UI
+            if (data.recipient) {
+                const rId = onlineUsers.get(data.recipient);
+                if (rId) io.to(rId).emit('call_ended_by_peer', data);
+            }
+            if (data.caller) {
+                const cId = onlineUsers.get(data.caller);
+                if (cId) io.to(cId).emit('call_ended_by_peer', data);
+            }
+        });
+
         // --- НОВОЕ: ИНДИКАТОР "ПЕЧАТАЕТ..." ---
         socket.on('typing', async (data) => {
             if (data.isGroup) {

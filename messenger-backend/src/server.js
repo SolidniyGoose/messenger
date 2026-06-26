@@ -95,6 +95,33 @@ app.get('/api/messages/single/:id', async (req, res) => {
     }
 });
 
+// --- ЭНДПОИНТ ДЛЯ ВЫДАЧИ ТОКЕНОВ LIVEKIT ---
+app.post('/api/calls/token', async (req, res) => {
+    try {
+        const { AccessToken } = require('livekit-server-sdk');
+        const { roomName, participantName } = req.body;
+        
+        if (!roomName || !participantName) {
+            return res.status(400).json({ error: 'Missing roomName or participantName' });
+        }
+        
+        const apiKey = process.env.LIVEKIT_API_KEY || 'devkey';
+        const apiSecret = process.env.LIVEKIT_API_SECRET || 'secret';
+        
+        const at = new AccessToken(apiKey, apiSecret, {
+            identity: participantName,
+        });
+        
+        at.addGrant({ roomJoin: true, room: roomName, canPublish: true, canSubscribe: true });
+        
+        const token = await at.toJwt();
+        res.json({ token });
+    } catch (e) {
+        console.error("Ошибка выдачи токена LiveKit:", e);
+        res.status(500).json({ error: "Ошибка токена" });
+    }
+});
+
 // --- ОБНОВЛЕННЫЙ ЭНДПОИНТ СОЗДАНИЯ ---
 app.post('/api/groups/create', async (req, res) => {
     try {
