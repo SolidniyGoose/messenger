@@ -1016,9 +1016,14 @@
                 } catch(e) { console.error("Ошибка истории", e); }
             }
             // СКАЗАТЬ СЕРВЕРУ, ЧТО МЫ ВСЁ ПРОЧИТАЛИ:
-            socket.emit('mark_read', { sender: user.username, recipient: myUsername });
+            const unread = history.filter(m => !m.isRead && m.sender !== myUsername);
+            if (unread.length > 0) {
+                socket.emit('mark_read', { sender: user.username, recipient: myUsername });
+                history.forEach(m => m.isRead = true);
+            }
         }
         updateHeaderButtons(); // <--- ДОБАВЬТЕ ЭТУ СТРОЧКУ СЮДА
+        loadActiveChats(); // Обновляем сайдбар, чтобы пропал бейджик
     }
 
     // --- ТЕЛЕГРАМ-ФИЛЬТРАЦИЯ И ОТРИСОВКА ---
@@ -1249,10 +1254,18 @@
             APP_CACHE.history.set(cacheKey, history);
         }
 
+        const history = APP_CACHE.history.get(cacheKey);
+        const unread = history.filter(m => !m.isRead && m.sender !== myUsername);
+        if (unread.length > 0) {
+            socket.emit('mark_group_read', { groupId: group.id, readBy: myUsername });
+            history.forEach(m => m.isRead = true);
+        }
+
         // --- 6. ЗАПУСК ОТРИСОВКИ ЧЕРЕЗ ФИЛЬТРЫ ---
         // Эта функция сама очистит список и отрисует только то, что нужно (посты или комменты)
         await redrawGroupChat();
         checkGroupCallStatus(group.id);
+        loadActiveChats(); // Обновляем сайдбар, чтобы пропал бейджик
 
     } catch (error) {
         console.error("Ошибка при входе в группу:", error);
@@ -1359,7 +1372,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const adminName = safeData.encryptedBy;
             let adminProfile = APP_CACHE.profiles.get(adminName);
             if (!adminProfile) {
-                const res = await fetch(`/api/users/${adminName}/profile`);
+                const res = await fetch(`/api/users/${adminName}`);
                 if (!res.ok) return null;
                 adminProfile = await res.json();
                 APP_CACHE.profiles.set(adminName, adminProfile);
@@ -1371,7 +1384,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const username = cacheKey.replace('chat_', '');
             let userProfile = APP_CACHE.profiles.get(username);
             if (!userProfile) {
-                const res = await fetch(`/api/users/${username}/profile`);
+                const res = await fetch(`/api/users/${username}`);
                 if (!res.ok) return null;
                 userProfile = await res.json();
                 APP_CACHE.profiles.set(username, userProfile);
@@ -1380,8 +1393,24 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }
     }
 
+    async function ensureHistoryLoaded(cacheKey, isGroup) {
+        if (APP_CACHE.history.has(cacheKey)) return;
+        try {
+            if (isGroup) {
+                const groupId = cacheKey.replace('group_', '');
+                const res = await fetch(`/api/history/group/${groupId}?limit=30&offset=0`);
+                if (res.ok) APP_CACHE.history.set(cacheKey, await res.json());
+            } else {
+                const username = cacheKey.replace('chat_', '');
+                const res = await fetch(`/api/messages/history?user1=${myUsername}&user2=${username}`);
+                if (res.ok) APP_CACHE.history.set(cacheKey, await res.json());
+            }
+        } catch(e) { console.error("Ошибка предзагрузки истории:", e); }
+    }
+
     async function renderChatPreview(previewContainer, timeContainer, badgeContainer, cacheKey, isGroup) {
         try {
+            await ensureHistoryLoaded(cacheKey, isGroup);
             const history = APP_CACHE.history.get(cacheKey) || [];
             const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
             let text = 'сообщений нет';

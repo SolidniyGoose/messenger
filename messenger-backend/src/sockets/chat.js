@@ -423,6 +423,17 @@ module.exports = (io) => {
             } catch (e) { console.error("Ошибка статуса:", e); }
         });
 
+        socket.on('mark_group_read', async ({ groupId, readBy }) => {
+            try {
+                await prisma.message.updateMany({
+                    where: { groupId: groupId, isRead: false, sender: { not: readBy } },
+                    data: { isRead: true }
+                });
+                // Можно добавить оповещение другим участникам, если нужно
+                io.to(groupId).emit('group_messages_read', { groupId, readBy });
+            } catch (e) { console.error("Ошибка статуса группы:", e); }
+        });
+
         // --- ОБНОВЛЕННОЕ ОТКЛЮЧЕНИЕ ---
         socket.on('disconnect', () => {
             for (let [username, id] of onlineUsers.entries()) {
