@@ -1378,9 +1378,17 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 if (adminProfile.error) return null; // Handle user not found
                 APP_CACHE.profiles.set(adminName, adminProfile);
             }
-            const tempKey = await deriveSharedSecret(mySecretKey, hexToArrayBuffer(adminProfile.publicKey));
+            if (!adminProfile.publicKey) return null;
+            const tempKey = await deriveSharedSecret(adminProfile.publicKey);
             const decryptedGroupKey = await decryptMessage(safeData, tempKey);
-            return await importKeyFromRaw(decryptedGroupKey);
+            if (!decryptedGroupKey) return null;
+            return await window.crypto.subtle.importKey(
+                "raw",
+                decryptedGroupKey,
+                { name: "AES-GCM", length: 256 },
+                true,
+                ["encrypt", "decrypt"]
+            );
         } else {
             const username = cacheKey.replace('chat_', '');
             let userProfile = APP_CACHE.profiles.get(username);
@@ -1391,7 +1399,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 if (userProfile.error) return null; // Handle user not found
                 APP_CACHE.profiles.set(username, userProfile);
             }
-            return await deriveSharedSecret(mySecretKey, hexToArrayBuffer(userProfile.publicKey));
+            if (!userProfile.publicKey) return null;
+            return await deriveSharedSecret(userProfile.publicKey);
         }
     }
 
@@ -1404,7 +1413,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 if (res.ok) APP_CACHE.history.set(cacheKey, await res.json());
             } else {
                 const username = cacheKey.replace('chat_', '');
-                const res = await fetch(`/api/messages/history?user1=${myUsername}&user2=${username}`);
+                const res = await fetch(`/api/history/${myUsername}/${username}?limit=30&offset=0`);
                 if (res.ok) APP_CACHE.history.set(cacheKey, await res.json());
             }
         } catch(e) { console.error("Ошибка предзагрузки истории:", e); }
