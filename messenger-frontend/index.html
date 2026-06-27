@@ -1375,9 +1375,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 const res = await fetch(`/api/users/${adminName}`);
                 if (!res.ok) return null;
                 adminProfile = await res.json();
+                if (adminProfile.error) return null; // Handle user not found
                 APP_CACHE.profiles.set(adminName, adminProfile);
             }
-            const tempKey = await deriveSharedSecret(mySecretKey, hexToArrayBuffer(adminProfile.key));
+            const tempKey = await deriveSharedSecret(mySecretKey, hexToArrayBuffer(adminProfile.publicKey));
             const decryptedGroupKey = await decryptMessage(safeData, tempKey);
             return await importKeyFromRaw(decryptedGroupKey);
         } else {
@@ -1387,9 +1388,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 const res = await fetch(`/api/users/${username}`);
                 if (!res.ok) return null;
                 userProfile = await res.json();
+                if (userProfile.error) return null; // Handle user not found
                 APP_CACHE.profiles.set(username, userProfile);
             }
-            return await deriveSharedSecret(mySecretKey, hexToArrayBuffer(userProfile.key));
+            return await deriveSharedSecret(mySecretKey, hexToArrayBuffer(userProfile.publicKey));
         }
     }
 
