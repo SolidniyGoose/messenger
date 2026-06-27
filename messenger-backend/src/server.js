@@ -152,7 +152,9 @@ app.post('/api/groups/create', async (req, res) => {
         if (io && io.onlineUsers) {
             members.forEach(m => {
                 const sId = io.onlineUsers.get(m.username);
+                console.log(`Проверка онлайна для ${m.username}: sId = ${sId}`);
                 if (sId) {
+                    console.log(`Отправляем group_added юзеру ${m.username} на сокет ${sId}`);
                     io.to(sId).emit('group_added', { groupId: newGroup.id });
                 }
             });

@@ -67,9 +67,10 @@ router.get('/', async (req, res) => {
 router.get('/:username/chats', async (req, res) => {
     try {
         const { username } = req.params;
-        // Ищем все сообщения, где мы либо отправитель, либо получатель
+        // Ищем только личные сообщения
         const messages = await prisma.message.findMany({
             where: {
+                groupId: null,
                 OR: [
                     { sender: username },
                     { recipient: username }
@@ -81,8 +82,8 @@ router.get('/:username/chats', async (req, res) => {
         // Собираем уникальные имена собеседников
         const chatUsers = new Set();
         messages.forEach(msg => {
-            if (msg.sender !== username) chatUsers.add(msg.sender);
-            if (msg.recipient !== username) chatUsers.add(msg.recipient);
+            if (msg.sender && msg.sender !== username) chatUsers.add(msg.sender);
+            if (msg.recipient && msg.recipient !== username) chatUsers.add(msg.recipient);
         });
 
         // Получаем полные профили собеседников (чтобы не качать всю БД при старте)
