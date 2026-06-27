@@ -85,10 +85,39 @@ router.get('/:username/chats', async (req, res) => {
             if (msg.recipient !== username) chatUsers.add(msg.recipient);
         });
 
-        res.json(Array.from(chatUsers));
+        // Получаем полные профили собеседников (чтобы не качать всю БД при старте)
+        const activeUsers = await prisma.user.findMany({
+            where: { username: { in: Array.from(chatUsers) } },
+            select: { username: true, displayName: true, avatar: true, publicKey: true }
+        });
+
+        res.json(activeUsers);
     } catch (error) {
-        console.error("Ошибка при поиске чатов:", error);
-        res.status(500).json({ error: "Ошибка сервера" });
+        console.error("Ошибка при получении чатов:", error);
+        res.status(500).json({ error: "Ошибка получения чатов" });
+    }
+});
+
+// 5. УМНЫЙ ПОИСК ПОЛЬЗОВАТЕЛЕЙ (Поиск по нику или имени)
+router.get('/search', async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || q.length < 2) return res.json([]);
+
+        const users = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { username: { contains: q } },
+                    { displayName: { contains: q } } // Регистронезависимый поиск в SQLite
+                ]
+            },
+            select: { username: true, displayName: true, avatar: true, publicKey: true },
+            take: 15 // Ограничиваем выдачу
+        });
+        res.json(users);
+    } catch (error) {
+        console.error("Ошибка при поиске пользователей:", error);
+        res.status(500).json({ error: "Ошибка поиска" });
     }
 });
 

@@ -145,9 +145,19 @@ app.post('/api/groups/create', async (req, res) => {
                     }))
                 }
             }
-        });
-
         console.log(`Создан ${isChannel ? 'Канал' : 'Группа'}: "${groupName}"`);
+        
+        // --- Уведомляем участников по вебсокетам ---
+        const io = req.app.get('io');
+        if (io && io.onlineUsers) {
+            members.forEach(m => {
+                const sId = io.onlineUsers.get(m.username);
+                if (sId) {
+                    io.to(sId).emit('group_added', { groupId: newGroup.id });
+                }
+            });
+        }
+        
         res.json({ success: true, group: newGroup });
         
     } catch (error) {
@@ -276,6 +286,7 @@ const io = new Server(server, {
     maxHttpBufferSize: 5e7, // Увеличиваем лимит до 50 Мегабайт
     destroyUpgrade: false // ВАЖНО: не убиваем другие websocket-соединения (LiveKit)
 });
+app.set('io', io); // Сохраняем io в app для использования в роутах
 require('./sockets/chat')(io);
 
 server.on('upgrade', (req, socket, head) => {

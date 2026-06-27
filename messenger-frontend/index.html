@@ -1484,26 +1484,42 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }
     }
 
+    // Глобальные переменные для хранения локального состояния чатов
+    let GLOB_activeUsers = [];
+    let GLOB_myGroups = [];
+
     async function loadActiveChats() {
         if (!myUsername) return; 
 
         try {
-            // 1. Загружаем списки с сервера (с защитой от кэша)
-            const usersRes = await fetch('/api/users?_t=' + Date.now());
-            const allUsers = await usersRes.json();
-            
             const activeRes = await fetch(`/api/users/${myUsername}/chats?_t=` + Date.now());
-            const activeNames = await activeRes.json();
+            GLOB_activeUsers = await activeRes.json();
+            
+            // Если открыт чат с юзером, которого нет в списке активных, добавляем его из кэша
+            if (currentChatUser && !currentChatIsGroup && !GLOB_activeUsers.find(u => u.username === currentChatUser)) {
+                let p = APP_CACHE.profiles.get(currentChatUser);
+                if (p) GLOB_activeUsers.push(p);
+            }
 
             const groupsRes = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
-            const myGroups = await groupsRes.json();
+            GLOB_myGroups = await groupsRes.json();
+            
+            renderChatsLocally(GLOB_activeUsers, GLOB_myGroups);
+        } catch (error) {
+            console.error("❌ Ошибка загрузки чатов:", error);
+        }
+    }
+
+    // Функция для отрисовки без запросов к серверу (для мгновенного UI и поиска)
+    function renderChatsLocally(usersToShow, groupsToShow) {
+        try {
             
                 // ИСПРАВЛЕНИЕ: Очищаем именно контейнер для чатов
             const chatsContainer = document.getElementById('chats-container');
             chatsContainer.innerHTML = ''; 
             
             // Рендерим ГРУППЫ
-            myGroups.forEach(group => {
+            groupsToShow.forEach(group => {
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
                 
@@ -1557,16 +1573,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             });
 
             // Рендерим ЛИЧНЫЕ ЧАТЫ
-            const usersToShow = allUsers.filter(user => 
-                user.username !== myUsername && 
-                (
-                    activeNames.includes(user.username) || 
-                    user.username === currentChatUser || 
-                    APP_CACHE.history.has(`chat_${user.username}`) // <--- СПАСИТЕЛЬНАЯ СТРОЧКА!
-                )
-            );
-            
             usersToShow.forEach(user => {
+                if (user.username === myUsername) return; // Пропускаем себя
+
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
                 
@@ -2001,8 +2010,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         
         await loadActiveChats();
         
-        // Магия: Автоматически обновляем контакты каждые 5 секунд!
-        setInterval(loadActiveChats, 60000); 
+        // Мгновенное обновление времени без запросов к серверу
+        setInterval(() => renderChatsLocally(GLOB_activeUsers, GLOB_myGroups), 60000); 
     }
 
     // Запускаем процесс при открытии страницы
@@ -2092,7 +2101,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }
 
         await loadActiveChats();
-        setInterval(loadActiveChats, 60000); // Автообновление контактов
+        // Мгновенное обновление времени без запросов к серверу
+        setInterval(() => renderChatsLocally(GLOB_activeUsers, GLOB_myGroups), 60000);
         return true;
     }
 
@@ -2140,7 +2150,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 // ---------------------------------------------------------
                 
                 loadActiveChats();
-                setInterval(loadActiveChats, 60000);
+                // Мгновенное обновление времени без запросов к серверу
+                setInterval(() => renderChatsLocally(GLOB_activeUsers, GLOB_myGroups), 60000);
             });
     }
 
@@ -2930,7 +2941,32 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     let originalStatusText = '';     // Запоминаем, что было написано до "печатает..."
     const TYPING_DELAY = 1500;       // Через 1.5 секунды после последней буквы надпись исчезнет
 
-    // 1. Слушаем ввод текста с клавиатуры
+    // 1. Слушаем ввод текста с клавиатуры    
+    const searchBar = document.querySelector('.search-bar');
+    if (searchBar) {
+        searchBar.addEventListener('input', async (e) => {
+            const q = e.target.value.trim();
+            if (q.length < 2) {
+                renderChatsLocally(GLOB_activeUsers, GLOB_myGroups);
+                return;
+            }
+            try {
+                const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
+                if (res.ok) {
+                    const results = await res.json();
+                    renderChatsLocally(results, []); // Показываем только результаты поиска пользователей
+                }
+            } catch (err) {
+                console.error('Ошибка поиска:', err);
+            }
+        });
+    }
+
+    // Слушаем добавление в новую группу по сокетам
+    socket.on('group_added', () => {
+        loadActiveChats();
+    });
+
     messageInput.addEventListener('input', () => {
         if (!currentChatUser) return; // Если чат не открыт - ничего не делаем
 

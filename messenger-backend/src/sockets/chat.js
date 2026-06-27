@@ -9,6 +9,7 @@ const livekitApiSecret = process.env.LIVEKIT_API_SECRET || 'secret';
 const roomService = new RoomServiceClient(livekitUrl, livekitApiKey, livekitApiSecret);
 
 module.exports = (io) => {
+    io.onlineUsers = onlineUsers; // Экспортируем для server.js
     const activeCalls = new Map(); // roomName -> groupId
 
     // Фоновая проверка пустых комнат
