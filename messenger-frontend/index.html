@@ -118,7 +118,8 @@
             <button id="close-contacts-btn" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-muted);">&times;</button>
         </div>
 
-        <input type="text" id="group-name-input" placeholder="Название группы..." style="display: none; padding: 12px; margin-bottom: 15px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); color: var(--text-main); outline: none;">
+        <input type="text" id="group-name-input" placeholder="Название группы..." style="display: none; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); color: var(--text-main); outline: none;">
+        <textarea id="group-bio-input" placeholder="Описание группы" maxlength="160" style="display: none; padding: 12px; margin-bottom: 15px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); color: var(--text-main); outline: none; resize: none; font-family: inherit; height: 60px;"></textarea>
 
         <div id="channel-settings" style="display: none; margin-bottom: 15px; padding: 12px; background: rgba(0,0,0,0.05); border-radius: 12px;">
             <label style="display: flex; align-items: center; gap: 10px; color: var(--text-main); cursor: pointer; font-size: 14px; font-weight: 500;">
@@ -157,7 +158,8 @@
         <input type="file" id="avatar-input" accept="image/*" style="display: none;">
         <button id="upload-avatar-btn" style="margin-bottom: 20px; padding: 8px 15px; background: var(--input-bg); color: var(--primary-color); border: 1px solid var(--border-color); border-radius: 10px; cursor: pointer; font-size: 14px;">Выбрать фото</button>
 
-        <input type="text" id="display-name-input" placeholder="Отображаемое имя" style="width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); color: var(--text-main); outline: none;">
+        <input type="text" id="display-name-input" placeholder="Отображаемое имя" style="width: 100%; padding: 12px; margin-bottom: 10px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); color: var(--text-main); outline: none;">
+        <textarea id="profile-bio-input" placeholder="О себе" maxlength="160" style="width: 100%; padding: 12px; margin-bottom: 20px; border: 1px solid var(--border-color); border-radius: 12px; background: var(--input-bg); color: var(--text-main); outline: none; resize: none; font-family: inherit; height: 60px;"></textarea>
         
         <div style="display: flex; gap: 10px; width: 100%;">
             <button id="cancel-profile-btn" style="flex: 1; padding: 12px; background: var(--input-bg); color: var(--text-main); border: none; border-radius: 12px; cursor: pointer;">Отмена</button>
@@ -182,6 +184,7 @@
                 </div>
                 <h2 id="info-name" style="margin: 0 0 5px 0; color: var(--text-main); font-size: 24px; text-align: center; word-break: break-word;">Название</h2>
                 <span id="info-status" style="color: var(--primary-color); font-size: 14px; font-weight: 500;">статус</span>
+                <div id="info-bio" style="margin-top: 15px; color: var(--text-muted); font-size: 14px; text-align: center; max-width: 90%; word-break: break-word; display: none;"></div>
             </div>
 
             <div id="info-members-section" style="display: none; flex-direction: column; padding: 15px 20px; border-bottom: 1px solid var(--border-color);">
@@ -610,6 +613,7 @@
         const membersList = document.getElementById('info-members-list');
         const membersCount = document.getElementById('info-members-count');
         const groupControls = document.getElementById('group-avatar-edit-controls');
+        const bioEl = document.getElementById('info-bio');
         
         const isGroup = typeof currentChatIsGroup !== 'undefined' ? currentChatIsGroup : false;
 
@@ -643,6 +647,13 @@
                     nameEl.textContent = activeGroup.name;
                     statusEl.textContent = "Группа";
                     membersCount.textContent = activeGroup.members.length;
+                    
+                    if (activeGroup.bio) {
+                        bioEl.textContent = activeGroup.bio;
+                        bioEl.style.display = 'block';
+                    } else {
+                        bioEl.style.display = 'none';
+                    }
                     
                     if (activeGroup.avatarHash) {
                         avatar.innerHTML = `<img data-avatar-type="group" data-avatar-id="${activeGroup.id}" data-avatar-hash="${activeGroup.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
@@ -704,6 +715,14 @@
                 
                 if (userData && !userData.error) {
                     nameEl.textContent = userData.displayName || userData.username;
+                    
+                    if (userData.bio) {
+                        bioEl.textContent = userData.bio;
+                        bioEl.style.display = 'block';
+                    } else {
+                        bioEl.style.display = 'none';
+                    }
+
                     if (userData.avatarHash) {
                         avatar.innerHTML = `<img data-avatar-type="user" data-avatar-id="${userData.username}" data-avatar-hash="${userData.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
                     } else {
@@ -1938,21 +1957,27 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         isCreatingChannel = isChannel; // Запоминаем, что именно создаем
         selectedForGroup.clear();
         
+        const groupBioInput = document.getElementById('group-bio-input');
+
         // Меняем интерфейс в зависимости от выбора
         if (isChannel) {
             modalTitle.textContent = 'Создать канал';
             groupNameInput.placeholder = 'Название канала...';
+            groupBioInput.placeholder = 'Описание канала...';
             confirmGroupBtn.textContent = 'Создать канал';
             channelSettings.style.display = 'block'; // Показываем галочку "Публичный"
         } else {
             modalTitle.textContent = 'Создать группу';
             groupNameInput.placeholder = 'Название группы...';
+            groupBioInput.placeholder = 'Описание группы...';
             confirmGroupBtn.textContent = 'Создать группу';
             channelSettings.style.display = 'none'; // Прячем галочку
         }
         
         groupNameInput.style.display = 'block';
         groupNameInput.value = ''; 
+        groupBioInput.style.display = 'block';
+        groupBioInput.value = '';
         channelPublicCheckbox.checked = false; 
         confirmGroupBtn.style.display = 'block';
         
@@ -1977,6 +2002,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     // --- МАГИЯ: ПОДТВЕРЖДЕНИЕ СОЗДАНИЯ ---
     confirmGroupBtn.addEventListener('click', async () => {
         const groupName = groupNameInput.value.trim();
+        const groupBio = document.getElementById('group-bio-input').value.trim();
         if (!groupName) return alert(isCreatingChannel ? "Введите название канала!" : "Введите название группы!");
         if (selectedForGroup.size === 0) return alert("Выберите хотя бы одного участника!");
 
@@ -2011,7 +2037,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     groupName: groupName,
                     members: groupMembersData,
                     isChannel: isCreatingChannel,
-                    isPublic: isPublicChannel
+                    isPublic: isPublicChannel,
+                    bio: groupBio || null
                 })
             });
 
@@ -2020,6 +2047,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             if (data.success) {
                 document.getElementById('contacts-modal').style.display = 'none';
                 groupNameInput.value = '';
+                document.getElementById('group-bio-input').value = '';
                 isCreatingGroup = false;
                 isCreatingChannel = false;
                 loadActiveChats(); 
@@ -2457,8 +2485,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         // Загружаем текущие данные из localStorage
         const savedName = localStorage.getItem('displayName') || myUsername;
         const savedAvatar = localStorage.getItem('userAvatar');
+        const savedBio = localStorage.getItem('userBio') || '';
         
         displayNameInput.value = savedName;
+        document.getElementById('profile-bio-input').value = savedBio;
         updatePreview(savedAvatar, myUsername);
     });
 
@@ -2528,6 +2558,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     // Сохранение профиля
     document.getElementById('save-profile-btn').addEventListener('click', async () => {
         const newName = displayNameInput.value.trim() || myUsername;
+        const newBio = document.getElementById('profile-bio-input').value.trim();
         const avatarData = tempAvatarBase64; // Наша переменная с Base64
 
         try {
@@ -2537,7 +2568,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 body: JSON.stringify({
                     username: myUsername,
                     displayName: newName,
-                    avatar: avatarData
+                    avatar: avatarData,
+                    bio: newBio
                 })
             });
             const result = await res.json();
@@ -2545,6 +2577,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             if (result.success) {
                 // Только после успеха на сервере обновляем локальные данные
                 localStorage.setItem('displayName', newName);
+                localStorage.setItem('userBio', newBio);
                 if (avatarData) localStorage.setItem('userAvatar', avatarData);
                 else localStorage.removeItem('userAvatar');
 

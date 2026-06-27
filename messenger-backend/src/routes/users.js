@@ -52,7 +52,7 @@ router.get('/search', async (req, res) => {
                     { displayName: { contains: q } } // Регистронезависимый поиск в SQLite
                 ]
             },
-            select: { username: true, displayName: true, avatar: true, publicKey: true },
+            select: { username: true, displayName: true, avatar: true, bio: true, publicKey: true },
             take: 15 // Ограничиваем выдачу
         });
         
@@ -110,8 +110,8 @@ router.get('/', async (req, res) => {
                 username: true, 
                 publicKey: true,
                 displayName: true,
-                avatar: true // <--- ВЕРНУЛИ
-                // УБРАЛИ avatar: true (Теперь этот JSON будет весить 5 КБ вместо 250 КБ!)
+                avatar: true,
+                bio: true
             } 
         });
         res.json(users);
@@ -147,7 +147,7 @@ router.get('/:username/chats', async (req, res) => {
         // Получаем полные профили собеседников (чтобы не качать всю БД при старте)
         const activeUsers = await prisma.user.findMany({
             where: { username: { in: Array.from(chatUsers) } },
-            select: { username: true, displayName: true, avatar: true, publicKey: true }
+            select: { username: true, displayName: true, avatar: true, bio: true, publicKey: true }
         });
 
         const activeUsersWithHashes = activeUsers.map(u => {

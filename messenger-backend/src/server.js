@@ -139,13 +139,14 @@ app.post('/api/calls/token', async (req, res) => {
 // --- ОБНОВЛЕННЫЙ ЭНДПОИНТ СОЗДАНИЯ ---
 app.post('/api/groups/create', async (req, res) => {
     try {
-        const { groupName, members, isChannel, isPublic } = req.body; // Получаем новые флаги
+        const { groupName, members, isChannel, isPublic, bio } = req.body; // Получаем новые флаги
 
         const newGroup = await prisma.group.create({
             data: {
                 name: groupName,
                 isChannel: isChannel || false,
                 isPublic: isPublic || false,
+                bio: bio || null,
                 members: {
                     create: members.map(m => ({
                         username: m.username,
@@ -210,6 +211,7 @@ app.get('/api/users/:username/groups', async (req, res) => {
                 id: true,
                 name: true,
                 avatar: true,
+                bio: true,
                 // members - НЕ запрашиваем (чтобы не тянуть тяжелые ключи)
                 _count: { select: { members: true } } // Магия Prisma: просим только КОЛИЧЕСТВО участников
             }
@@ -258,20 +260,23 @@ app.get('/api/groups/:id', async (req, res) => {
 
 // Обновление профиля пользователя
 app.post('/api/users/update', async (req, res) => {
-    const { username, displayName, avatar } = req.body;
+    const { username, displayName, avatar, bio } = req.body;
 
-    // --- 🛡️ ЗАЩИТА ОТОБРАЖАЕМОГО ИМЕНИ ---
+    // --- 🛡️ ЗАЩИТА ОТОБРАЖАЕМОГО ИМЕНИ И БИО ---
     if (displayName && displayName.length > 40) {
         return res.status(400).json({ success: false, error: "Имя слишком длинное!" });
     }
     if (displayName && /[<>]/.test(displayName)) {
         return res.status(400).json({ success: false, error: "Имя содержит запрещенные символы!" });
     }
+    if (bio && bio.length > 160) {
+        return res.status(400).json({ success: false, error: "О себе слишком длинное (до 160 символов)!" });
+    }
 
     try {
         const updatedUser = await prisma.user.update({
             where: { username },
-            data: { displayName, avatar }
+            data: { displayName, avatar, bio }
         });
         res.json({ success: true, user: updatedUser });
     } catch (e) {
