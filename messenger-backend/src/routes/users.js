@@ -32,6 +32,29 @@ router.post('/register', async (req, res) => {
     }
 });
 
+// 5. УМНЫЙ ПОИСК ПОЛЬЗОВАТЕЛЕЙ (Поиск по нику или имени)
+router.get('/search', async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || q.length < 2) return res.json([]);
+
+        const users = await prisma.user.findMany({
+            where: {
+                OR: [
+                    { username: { contains: q } },
+                    { displayName: { contains: q } } // Регистронезависимый поиск в SQLite
+                ]
+            },
+            select: { username: true, displayName: true, avatar: true, publicKey: true },
+            take: 15 // Ограничиваем выдачу
+        });
+        res.json(users);
+    } catch (error) {
+        console.error("Ошибка при поиске пользователей:", error);
+        res.status(500).json({ error: "Ошибка поиска" });
+    }
+});
+
 // 2. ПОЛУЧЕНИЕ ДАННЫХ КОНКРЕТНОГО ПОЛЬЗОВАТЕЛЯ (ДЛЯ ВХОДА)
 router.get('/:username', async (req, res) => {
     try {
@@ -99,27 +122,5 @@ router.get('/:username/chats', async (req, res) => {
     }
 });
 
-// 5. УМНЫЙ ПОИСК ПОЛЬЗОВАТЕЛЕЙ (Поиск по нику или имени)
-router.get('/search', async (req, res) => {
-    try {
-        const { q } = req.query;
-        if (!q || q.length < 2) return res.json([]);
-
-        const users = await prisma.user.findMany({
-            where: {
-                OR: [
-                    { username: { contains: q } },
-                    { displayName: { contains: q } } // Регистронезависимый поиск в SQLite
-                ]
-            },
-            select: { username: true, displayName: true, avatar: true, publicKey: true },
-            take: 15 // Ограничиваем выдачу
-        });
-        res.json(users);
-    } catch (error) {
-        console.error("Ошибка при поиске пользователей:", error);
-        res.status(500).json({ error: "Ошибка поиска" });
-    }
-});
 
 module.exports = router;
