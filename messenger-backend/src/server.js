@@ -145,6 +145,7 @@ app.post('/api/groups/create', async (req, res) => {
                     }))
                 }
             }
+        });
         console.log(`Создан ${isChannel ? 'Канал' : 'Группа'}: "${groupName}"`);
         
         // --- Уведомляем участников по вебсокетам ---
