@@ -6,6 +6,14 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client'); 
 const prisma = new PrismaClient(); 
+const crypto = require('crypto');
+
+// Хелпер для хэширования
+const getAvatarHash = (avatarStr) => {
+    if (!avatarStr) return null;
+    return crypto.createHash('md5').update(avatarStr).digest('hex');
+};
+
 
 const app = express();
 
@@ -206,8 +214,29 @@ app.get('/api/users/:username/groups', async (req, res) => {
                 _count: { select: { members: true } } // Магия Prisma: просим только КОЛИЧЕСТВО участников
             }
         });
-        res.json(groups);
+
+        const groupsWithHashes = groups.map(g => {
+            const hash = getAvatarHash(g.avatar);
+            delete g.avatar;
+            return { ...g, avatarHash: hash };
+        });
+
+        res.json(groupsWithHashes);
     } catch (error) { res.status(500).json({ error: "Ошибка сервера" }); }
+});
+
+// --- НОВЫЙ ЭНДПОИНТ: ПОЛУЧЕНИЕ САМОЙ АВАТАРКИ ГРУППЫ ---
+app.get('/api/groups/:id/avatar', async (req, res) => {
+    try {
+        const group = await prisma.group.findUnique({
+            where: { id: req.params.id },
+            select: { avatar: true }
+        });
+        if (!group || !group.avatar) return res.json({ avatar: null });
+        res.json({ avatar: group.avatar });
+    } catch (error) {
+        res.status(500).json({ error: "Ошибка БД" });
+    }
 });
 
 // --- НОВЫЙ ЭНДПОИНТ: ПОЛУЧЕНИЕ 100% ИНФОРМАЦИИ О КОНКРЕТНОЙ ГРУППЕ ---
@@ -217,6 +246,12 @@ app.get('/api/groups/:id', async (req, res) => {
             where: { id: req.params.id },
             include: { members: true } // Здесь забираем всё (и аватар, и ключи участников)
         });
+        
+        if (group) {
+            group.avatarHash = getAvatarHash(group.avatar);
+            delete group.avatar;
+        }
+
         res.json(group);
     } catch (error) { res.status(500).json({ error: "Ошибка" }); }
 });

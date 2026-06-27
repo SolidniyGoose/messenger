@@ -644,11 +644,13 @@
                     statusEl.textContent = "Группа";
                     membersCount.textContent = activeGroup.members.length;
                     
-                    if (activeGroup.avatar) {
-                        avatar.innerHTML = `<img src="${activeGroup.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
+                    if (activeGroup.avatarHash) {
+                        avatar.innerHTML = `<img data-avatar-type="group" data-avatar-id="${activeGroup.id}" data-avatar-hash="${activeGroup.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
                     } else {
                         avatar.innerHTML = "👥";
                     }
+                    
+                    processAvatars(avatar);
                     
                     membersSection.style.display = 'flex';
                     membersList.innerHTML = '';
@@ -702,11 +704,12 @@
                 
                 if (userData && !userData.error) {
                     nameEl.textContent = userData.displayName || userData.username;
-                    if (userData.avatar) {
-                        avatar.innerHTML = `<img src="${userData.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+                    if (userData.avatarHash) {
+                        avatar.innerHTML = `<img data-avatar-type="user" data-avatar-id="${userData.username}" data-avatar-hash="${userData.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
                     } else {
                         avatar.innerHTML = (userData.displayName || userData.username).charAt(0).toUpperCase();
                     }
+                    processAvatars(avatar);
                 }
             } catch (e) { console.error("Ошибка профиля собеседника", e); }
         }
@@ -767,6 +770,94 @@
         PROFILE_TTL: 5 * 60 * 1000, // Профили храним 5 минут
         MEDIA_TTL: 10 * 60 * 1000   // Медиа файлы храним 10 минут
     };
+
+    // --- ПЕРСИСТЕНТНЫЙ КЭШ АВАТАРОК (IndexedDB) ---
+    const AvatarDB = {
+        dbName: 'MessengerAvatarsDB',
+        dbVersion: 1,
+        db: null,
+        init: function() {
+            return new Promise((resolve, reject) => {
+                const req = indexedDB.open(this.dbName, this.dbVersion);
+                req.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('avatars')) {
+                        db.createObjectStore('avatars', { keyPath: 'id' });
+                    }
+                };
+                req.onsuccess = (e) => { this.db = e.target.result; resolve(); };
+                req.onerror = (e) => reject(e);
+            });
+        },
+        get: function(id) {
+            return new Promise((resolve) => {
+                if (!this.db) return resolve(null);
+                const tx = this.db.transaction('avatars', 'readonly');
+                const store = tx.objectStore('avatars');
+                const req = store.get(id);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => resolve(null);
+            });
+        },
+        put: function(id, hash, data) {
+            return new Promise((resolve) => {
+                if (!this.db) return resolve();
+                const tx = this.db.transaction('avatars', 'readwrite');
+                const store = tx.objectStore('avatars');
+                store.put({ id, hash, data });
+                tx.oncomplete = () => resolve();
+            });
+        }
+    };
+
+    // Инициализация при старте
+    AvatarDB.init().catch(e => console.warn('IndexedDB avatars не поддерживается', e));
+
+    async function getAvatarUrlAsync(type, id, hash) {
+        if (!hash) return null;
+        
+        const cacheId = `${type}_${id}`;
+        
+        // Пытаемся достать из IndexedDB
+        const cached = await AvatarDB.get(cacheId);
+        
+        if (cached && cached.hash === hash && cached.data) {
+            return cached.data; // Возвращаем base64
+        }
+
+        // Если кэша нет или хэш изменился - скачиваем с сервера
+        try {
+            const endpoint = type === 'group' ? `/api/groups/${encodeURIComponent(id)}/avatar` : `/api/users/${encodeURIComponent(id)}/avatar`;
+            const res = await fetch(endpoint);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.avatar) {
+                    await AvatarDB.put(cacheId, hash, data.avatar);
+                    return data.avatar;
+                }
+            }
+        } catch (e) {
+            console.error("Ошибка загрузки аватарки:", e);
+        }
+        return null;
+    }
+
+    async function processAvatars(containerElement = document) {
+        const avatars = containerElement.querySelectorAll('img[data-avatar-id]:not([data-avatar-loaded])');
+        for (const img of avatars) {
+            img.setAttribute('data-avatar-loaded', 'true');
+            const type = img.getAttribute('data-avatar-type');
+            const id = img.getAttribute('data-avatar-id');
+            const hash = img.getAttribute('data-avatar-hash');
+            
+            if (hash && hash !== 'null' && hash !== 'undefined') {
+                const src = await getAvatarUrlAsync(type, id, hash);
+                if (src) {
+                    img.src = src;
+                }
+            }
+        }
+    }
 
     // Помощник: добавляем новое сообщение в кэш, чтобы оно не исчезло при переключении чатов
     function appendToHistoryCache(isGroup, chatId, messageObj) {
@@ -1404,6 +1495,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }
     }
 
+
+
     async function ensureHistoryLoaded(cacheKey, isGroup) {
         if (APP_CACHE.history.has(cacheKey)) return;
         try {
@@ -1513,8 +1606,6 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     // Функция для отрисовки без запросов к серверу (для мгновенного UI и поиска)
     function renderChatsLocally(usersToShow, groupsToShow) {
         try {
-            
-                // ИСПРАВЛЕНИЕ: Очищаем именно контейнер для чатов
             const chatsContainer = document.getElementById('chats-container');
             chatsContainer.innerHTML = ''; 
             
@@ -1529,24 +1620,23 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 }
                 
                 // Рисуем аватарку ИЛИ иконку (Рупор для канала, Люди для группы)
-                const avatarHtml = group.avatar 
-                    ? `<img src="${group.avatar}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`
+                const avatarHtml = group.avatarHash 
+                    ? `<img data-avatar-type="group" data-avatar-id="${group.id}" data-avatar-hash="${group.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`
                     : (group.isChannel ? '📢' : '👥');
                 
                 const safeGroupName = escapeHTML(group.name);
                 const typeText = group.isChannel ? 'Канал' : 'Группа';
 
-                // ВОТ ЗДЕСЬ МЫ ИСПРАВИЛИ БАГ С ТЕКСТОМ:
                 chatItem.style.display = 'flex';
                 chatItem.style.justifyContent = 'space-between';
                 chatItem.style.alignItems = 'center';
                 
                 chatItem.innerHTML = `
                     <div style="display: flex; flex: 1; align-items: center; min-width: 0;">
-                        <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0;">
+                        <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; width: 48px; height: 48px;">
                             ${avatarHtml}
                         </div>
-                        <div class="chat-info" style="flex: 1; min-width: 0; margin-right: 10px;">
+                        <div class="chat-info" style="flex: 1; min-width: 0; margin-right: 10px; margin-left: 15px;">
                             <div style="font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeGroupName}</div>
                             <div style="display: flex; align-items: center;">
                                 <div class="preview-text" style="font-size: 13px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${typeText} (${group._count.members} уч.)</div>
@@ -1559,7 +1649,6 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     </div>
                 `;
                 
-                // Рендерим превью асинхронно
                 renderChatPreview(
                     chatItem.querySelector('.preview-text'), 
                     chatItem.querySelector('.preview-time'), 
@@ -1569,12 +1658,12 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 );
                 
                 chatItem.addEventListener('click', () => openGroupChat(group));
-                chatsContainer.appendChild(chatItem); // Добавляем в контейнер
+                chatsContainer.appendChild(chatItem);
             });
 
             // Рендерим ЛИЧНЫЕ ЧАТЫ
             usersToShow.forEach(user => {
-                if (user.username === myUsername) return; // Пропускаем себя
+                if (user.username === myUsername) return;
 
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
@@ -1584,20 +1673,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     chatItem.style.color = 'var(--text-main)';
                 }
 
-                // Определяем имя для отображения (приоритет у displayName)
                 const displayName = user.displayName || user.username;
-                const safeDisplayName = escapeHTML(displayName); // Очищаем!
+                const safeDisplayName = escapeHTML(displayName);
 
-                // Собираем аватарку (фото или буква)
-                const userAvatarHtml = user.avatar 
-                    ? `<img src="${user.avatar}" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`
+                const userAvatarHtml = user.avatarHash 
+                    ? `<img data-avatar-type="user" data-avatar-id="${user.username}" data-avatar-hash="${user.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`
                     : displayName.charAt(0).toUpperCase();
                 
-                // Если есть фото, убираем синий градиент у кружочка, если нет - оставляем
-                const avatarBackground = !user.avatar ? 'background: var(--gradient-primary); color: white;' : '';
-
-                // В блоке РЕНДЕРИМ ЛИЧНЫЕ ЧАТЫ:
-                
+                const avatarBackground = !user.avatarHash ? 'background: var(--gradient-primary); color: white;' : '';
                 
                 chatItem.style.display = 'flex';
                 chatItem.style.justifyContent = 'space-between';
@@ -1621,7 +1704,6 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     </div>
                 `;
                 
-                // Рендерим превью асинхронно
                 renderChatPreview(
                     chatItem.querySelector('.preview-text'), 
                     chatItem.querySelector('.preview-time'), 
@@ -1631,8 +1713,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 );
                 
                 chatItem.addEventListener('click', () => openChatWith(user));
-                chatsContainer.appendChild(chatItem); // Добавляем в контейнер
+                chatsContainer.appendChild(chatItem);
             });
+            processAvatars(chatsContainer);
         } catch (error) {
             console.error("❌ Ошибка загрузки чатов:", error);
         }
@@ -1663,8 +1746,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 checkboxHtml = `<div style="width: 20px; height: 20px; border-radius: 5px; border: 2px solid ${isSelected ? 'var(--primary-color)' : 'var(--text-muted)'}; background: ${isSelected ? 'var(--primary-color)' : 'transparent'}; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px;">${isSelected ? '✓' : ''}</div>`;
             }
 
-            // Внутри renderContactsList:
-            const safeUsername = escapeHTML(user.username); // Очищаем имя!
+            const safeUsername = escapeHTML(user.username);
 
             item.innerHTML = `
                 <div style="display: flex; align-items: center; gap: 15px;">
@@ -2713,8 +2795,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             // Пытаемся достать реальную аватарку из кэша профилей
             if (APP_CACHE.profiles.has(senderName)) {
                 const profileData = APP_CACHE.profiles.get(senderName).data;
-                if (profileData && profileData.avatar) {
-                    avatarContent = `<img src="${profileData.avatar}" style="width:100%; height:100%; object-fit:cover;">`;
+                if (profileData && profileData.avatarHash) {
+                    avatarContent = `<img data-avatar-type="user" data-avatar-id="${senderName}" data-avatar-hash="${profileData.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover;">`;
                     avatarBg = 'transparent';
                 }
             }
@@ -2933,6 +3015,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             messagesList.appendChild(wrapperDiv);
             messagesList.scrollTop = messagesList.scrollHeight;
         }
+        processAvatars(wrapperDiv);
     } // Конец функции displayMessage
 
     // --- ЛОГИКА ОНЛАЙНА И ИНДИКАТОРА "ПЕЧАТАЕТ..." ---

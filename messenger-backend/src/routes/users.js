@@ -1,7 +1,14 @@
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+
+// Хелпер для хэширования
+const getAvatarHash = (avatarStr) => {
+    if (!avatarStr) return null;
+    return crypto.createHash('md5').update(avatarStr).digest('hex');
+};
 
 // 1. РЕГИСТРАЦИЯ ИЛИ ОБНОВЛЕНИЕ КЛЮЧЕЙ
 router.post('/register', async (req, res) => {
@@ -48,10 +55,32 @@ router.get('/search', async (req, res) => {
             select: { username: true, displayName: true, avatar: true, publicKey: true },
             take: 15 // Ограничиваем выдачу
         });
-        res.json(users);
+        
+        // Удаляем саму аватарку, возвращаем только хэш
+        const usersWithHashes = users.map(u => {
+            const hash = getAvatarHash(u.avatar);
+            delete u.avatar;
+            return { ...u, avatarHash: hash };
+        });
+
+        res.json(usersWithHashes);
     } catch (error) {
         console.error("Ошибка при поиске пользователей:", error);
         res.status(500).json({ error: "Ошибка поиска" });
+    }
+});
+
+// 5.5. ПОЛУЧЕНИЕ САМОЙ АВАТАРКИ (Для кэширования IndexedDB)
+router.get('/:username/avatar', async (req, res) => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { username: req.params.username },
+            select: { avatar: true }
+        });
+        if (!user || !user.avatar) return res.json({ avatar: null });
+        res.json({ avatar: user.avatar });
+    } catch (error) {
+        res.status(500).json({ error: "Ошибка БД" });
     }
 });
 
@@ -61,6 +90,12 @@ router.get('/:username', async (req, res) => {
         const user = await prisma.user.findUnique({
             where: { username: req.params.username }
         });
+        
+        if (user) {
+            user.avatarHash = getAvatarHash(user.avatar);
+            delete user.avatar;
+        }
+
         res.json(user || { error: "Не найден" });
     } catch (error) {
         res.status(500).json({ error: "Ошибка БД" });
@@ -115,7 +150,13 @@ router.get('/:username/chats', async (req, res) => {
             select: { username: true, displayName: true, avatar: true, publicKey: true }
         });
 
-        res.json(activeUsers);
+        const activeUsersWithHashes = activeUsers.map(u => {
+            const hash = getAvatarHash(u.avatar);
+            delete u.avatar;
+            return { ...u, avatarHash: hash };
+        });
+
+        res.json(activeUsersWithHashes);
     } catch (error) {
         console.error("Ошибка при получении чатов:", error);
         res.status(500).json({ error: "Ошибка получения чатов" });
