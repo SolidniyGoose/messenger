@@ -1331,10 +1331,9 @@
         if (creatorUsername === myUsername) {
             creatorPublicKeyBase64 = myPublicKeyBase64;
         } else {
-            const usersRes = await fetch('/api/users');
-            const allUsers = await usersRes.json();
-            const creatorObj = allUsers.find(u => u.username === creatorUsername);
-            if (!creatorObj) throw new Error("Создатель группы не найден!");
+            const userRes = await fetch(`/api/users/${creatorUsername}`);
+            const creatorObj = await userRes.json();
+            if (!creatorObj || creatorObj.error) throw new Error("Создатель группы не найден!");
             creatorPublicKeyBase64 = creatorObj.publicKey;
         }
 
@@ -1623,11 +1622,21 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     }
 
     // Функция для отрисовки без запросов к серверу (для мгновенного UI и поиска)
-    function renderChatsLocally(usersToShow, groupsToShow) {
+    function renderChatsLocally(usersToShow, groupsToShow, globalUsersToShow = null) {
         try {
             const chatsContainer = document.getElementById('chats-container');
             chatsContainer.innerHTML = ''; 
             
+            const isSearch = globalUsersToShow !== null;
+
+            // Если это поиск, добавляем заголовок "Ваши чаты" (если они есть)
+            if (isSearch && (usersToShow.length > 0 || groupsToShow.length > 0)) {
+                const localHeader = document.createElement('div');
+                localHeader.style.cssText = 'padding: 10px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;';
+                localHeader.textContent = 'Ваши чаты';
+                chatsContainer.appendChild(localHeader);
+            }
+
             // Рендерим ГРУППЫ
             groupsToShow.forEach(group => {
                 const chatItem = document.createElement('div');
@@ -1803,8 +1812,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         confirmGroupBtn.style.display = 'none';
 
         try {
-            const res = await fetch('/api/users');
-            allAvailableContacts = await res.json();
+            allAvailableContacts = [...GLOB_activeUsers]; // Используем только активные чаты
             renderContactsList(allAvailableContacts);
         } catch (e) {
             console.error("Ошибка загрузки:", e);
@@ -1982,8 +1990,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         confirmGroupBtn.style.display = 'block';
         
         try {
-            const res = await fetch('/api/users');
-            allAvailableContacts = await res.json();
+            allAvailableContacts = [...GLOB_activeUsers]; // Используем только активные чаты
             renderContactsList(allAvailableContacts);
         } catch (e) {
             console.error("Ошибка загрузки:", e);
@@ -3077,13 +3084,33 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             searchAbortController = new AbortController();
             
             try {
+                // 1. Локальный поиск по активным чатам и группам
+                const lowerQ = q.toLowerCase();
+                const localUsers = GLOB_activeUsers.filter(u => 
+                    u.username.toLowerCase().includes(lowerQ) || 
+                    (u.displayName && u.displayName.toLowerCase().includes(lowerQ)) ||
+                    (u.bio && u.bio.toLowerCase().includes(lowerQ))
+                );
+                
+                const localGroups = GLOB_myGroups.filter(g => 
+                    g.name.toLowerCase().includes(lowerQ)
+                );
+
+                // 2. Глобальный поиск на сервере
                 const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`, {
                     signal: searchAbortController.signal
                 });
                 
                 if (res.ok) {
                     const results = await res.json();
-                    renderChatsLocally(results, []); // Показываем только результаты поиска пользователей
+                    
+                    // Исключаем тех, кто уже есть в локальном поиске или это мы сами
+                    const globalUsers = results.filter(ru => 
+                        ru.username !== myUsername && 
+                        !localUsers.some(lu => lu.username === ru.username)
+                    );
+                    
+                    renderChatsLocally(localUsers, localGroups, globalUsers);
                 }
             } catch (err) {
                 if (err.name !== 'AbortError') {
@@ -3397,15 +3424,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         listEl.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Загрузка...</div>';
         
         try {
-            // Получаем все активные чаты (группы и личные)
-            const usersRes = await fetch('/api/users?_t=' + Date.now());
-            const allUsers = await usersRes.json();
-            
-            const activeRes = await fetch(`/api/users/${myUsername}/chats?_t=` + Date.now());
-            const personalChats = await activeRes.json();
-            
-            const groupsRes = await fetch(`/api/users/${myUsername}/groups?_t=` + Date.now());
-            const groups = await groupsRes.json();
+            const groups = GLOB_myGroups;
+            const personalChats = GLOB_activeUsers;
 
             listEl.innerHTML = '';
 
@@ -3413,14 +3433,12 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const allChats = [];
             
             groups.forEach(g => {
-                allChats.push({ id: g.id, name: g.name, isGroup: true, avatar: '/default-avatar.png' });
+                allChats.push({ id: g.id, name: g.name, isGroup: true, avatarHash: g.avatarHash });
             });
             
-            personalChats.forEach(partner => {
-                const userObj = allUsers.find(u => u.username === partner);
-                const avatar = userObj && userObj.avatar ? userObj.avatar : '/default-avatar.png';
-                const displayName = userObj && userObj.displayName ? userObj.displayName : partner;
-                allChats.push({ id: partner, name: displayName, isGroup: false, avatar: avatar });
+            personalChats.forEach(userObj => {
+                const displayName = userObj.displayName || userObj.username;
+                allChats.push({ id: userObj.username, name: displayName, isGroup: false, avatarHash: userObj.avatarHash });
             });
 
             if (allChats.length === 0) {
