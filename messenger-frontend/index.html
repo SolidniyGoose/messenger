@@ -1602,6 +1602,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     // Глобальные переменные для хранения локального состояния чатов
     let GLOB_activeUsers = [];
     let GLOB_myGroups = [];
+    let globalRenderId = 0;
 
     async function loadActiveChats() {
         if (!myUsername) return; 
@@ -1627,20 +1628,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
     // Функция для отрисовки без запросов к серверу (для мгновенного UI и поиска)
     async function renderChatsLocally(usersToShow, groupsToShow, globalUsersToShow = null) {
+        const myRenderId = ++globalRenderId;
         try {
-            const chatsContainer = document.getElementById('chats-container');
-            chatsContainer.innerHTML = ''; 
-            
             const isSearch = globalUsersToShow !== null;
-
-            // Если это поиск, добавляем заголовок "Ваши чаты" (если они есть)
-            if (isSearch && (usersToShow.length > 0 || groupsToShow.length > 0)) {
-                const localHeader = document.createElement('div');
-                localHeader.style.cssText = 'padding: 10px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;';
-                localHeader.textContent = 'Ваши чаты';
-                chatsContainer.appendChild(localHeader);
-            }
-
             const combinedChats = [];
             const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
 
@@ -1678,6 +1668,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
             // Рендерим отсортированный список (Ждем отрисовки превью, чтобы избежать мерцания)
             const fragment = document.createDocumentFragment();
+            
+            if (isSearch && (usersToShow.length > 0 || groupsToShow.length > 0)) {
+                const localHeader = document.createElement('div');
+                localHeader.style.cssText = 'padding: 10px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;';
+                localHeader.textContent = 'Ваши чаты';
+                fragment.appendChild(localHeader);
+            }
+            
             const renderPromises = [];
 
             for (const chatObj of combinedChats) {
@@ -1787,7 +1785,6 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             }
             
             await Promise.all(renderPromises);
-            chatsContainer.appendChild(fragment);
 
             // Рендерим ГЛОБАЛЬНЫЙ ПОИСК
             if (isSearch) {
@@ -1795,7 +1792,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     const globalHeader = document.createElement('div');
                     globalHeader.style.cssText = 'padding: 10px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 5px;';
                     globalHeader.textContent = 'Глобальный поиск';
-                    chatsContainer.appendChild(globalHeader);
+                    fragment.appendChild(globalHeader);
 
                     globalUsersToShow.forEach(user => {
                         if (user.username === myUsername) return;
@@ -1845,7 +1842,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                             renderChatsLocally(GLOB_activeUsers, GLOB_myGroups);
                             openChatWith(user);
                         });
-                        chatsContainer.appendChild(chatItem);
+                        fragment.appendChild(chatItem);
                     });
                 }
 
@@ -1853,9 +1850,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     const emptyState = document.createElement('div');
                     emptyState.style.cssText = 'padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px;';
                     emptyState.textContent = 'Ничего не найдено';
-                    chatsContainer.appendChild(emptyState);
+                    fragment.appendChild(emptyState);
                 }
             }
+
+            if (myRenderId !== globalRenderId) return; // <-- Abort if stale!
+
+            const chatsContainer = document.getElementById('chats-container');
+            chatsContainer.innerHTML = ''; 
+            chatsContainer.appendChild(fragment);
 
             processAvatars(chatsContainer);
         } catch (error) {
