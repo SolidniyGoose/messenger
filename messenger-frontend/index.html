@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>паркетич</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
     <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
 </head>
 <body>
@@ -339,14 +340,14 @@
         </div>
     </div>
     <ul class="drawer-menu">
-        <li><span class="icon">👤</span> Профиль</li>
-        <li id="contacts-btn"><span class="icon">👥</span> Контакты</li>
-        <li><span class="icon">⚙️</span> Настройки</li>
+        <li><span class="material-symbols-outlined icon">person</span> Профиль</li>
+        <li id="contacts-btn"><span class="material-symbols-outlined icon">group</span> Контакты</li>
+        <li><span class="material-symbols-outlined icon">settings</span> Настройки</li>
         <li id="theme-toggle">
-            <span class="icon" id="theme-icon">🌙</span> 
+            <span class="material-symbols-outlined icon" id="theme-icon">dark_mode</span> 
             <span id="theme-text">Ночной режим</span>
         </li>
-        <li id="logout-btn" style="color: #ff4d4d;"><span class="icon">🚪</span> Выйти</li>
+        <li id="logout-btn" style="color: #ff4d4d;"><span class="material-symbols-outlined icon">logout</span> Выйти</li>
     </ul>
 </div>
 
@@ -359,13 +360,13 @@
     <div id="chats-container" style="flex: 1; overflow-y: auto; padding-bottom: 80px;">
         </div>
     
-    <button id="sidebar-group-btn" title="Создать группу" style="position: absolute; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: var(--gradient-primary); color: white; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; padding: 0; margin: 0; transition: transform 0.2s;">
-        <span style="margin-top: -2px;">+</span>
+    <button id="sidebar-group-btn" title="Создать" style="position: absolute; bottom: 20px; right: 20px; width: 56px; height: 56px; border-radius: 50%; background: var(--gradient-primary); color: white; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; padding: 0; margin: 0; transition: transform 0.2s;">
+        <span class="material-symbols-outlined" style="font-size: 28px;">edit_square</span>
     </button>
 </div>
 <div class="chat-area">
     <div class="chat-header">
-        <button class="back-btn" id="back-btn" aria-label="Назад">←</button>
+        <button class="back-btn" id="back-btn" aria-label="Назад"><span class="material-symbols-outlined">arrow_back</span></button>
         
         <div class="chat-header-info" style="flex: 1; cursor: pointer; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
             <span class="chat-name">Глобальный чат</span>
@@ -373,15 +374,15 @@
         </div>
         
         <div style="display: flex; align-items: center; gap: 2px;">
-            <button id="personal-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Голосовой звонок" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📞</button>
-            <button id="personal-video-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Видеозвонок" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📹</button>
+            <button id="personal-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Голосовой звонок" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'"><span class="material-symbols-outlined">call</span></button>
+            <button id="personal-video-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Видеозвонок" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'"><span class="material-symbols-outlined">videocam</span></button>
 
-            <button id="group-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Звонок в группе" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📞</button>
-            <button id="return-to-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: #34c759; cursor: pointer; padding: 5px 10px; transition: opacity 0.2s; animation: pulse 2s infinite;" title="Вернуться к звонку" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">🟢 Вернуться</button>
+            <button id="group-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" title="Звонок в группе" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'"><span class="material-symbols-outlined">call</span></button>
+            <button id="return-to-call-btn" style="display: none; background: none; border: none; font-size: 20px; color: #34c759; cursor: pointer; padding: 5px 10px; transition: opacity 0.2s; animation: pulse 2s infinite;" title="Вернуться к звонку" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'"><span class="material-symbols-outlined" style="vertical-align: middle;">phone_in_talk</span> Вернуться</button>
             
-            <button id="channel-discussion-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px;" title="Все комментарии">💬</button>
+            <button id="channel-discussion-btn" style="display: none; background: none; border: none; font-size: 20px; color: var(--text-muted); cursor: pointer; padding: 5px 10px;" title="Все комментарии"><span class="material-symbols-outlined">forum</span></button>
             
-            <button id="group-settings-btn" style="display: none; background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">⋮</button>
+            <button id="group-settings-btn" style="display: none; background: none; border: none; font-size: 24px; color: var(--text-muted); cursor: pointer; padding: 5px 10px; transition: color 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'"><span class="material-symbols-outlined">more_vert</span></button>
         </div>
     </div>
     
@@ -420,13 +421,13 @@
             <input type="file" id="image-upload" accept="image/*,video/*" multiple style="display: none;">
             <input type="file" id="file-upload" style="display: none;">
             
-            <span id="camera-btn" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить картинку или видео" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📷</span>
-            <label for="file-upload" style="cursor: pointer; font-size: 22px; margin-right: 10px; color: var(--text-muted); transition: 0.2s;" title="Отправить файл" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'">📎</label>
+            <span id="camera-btn" style="cursor: pointer; font-size: 24px; margin-right: 10px; color: var(--text-muted); transition: 0.2s; display: flex; align-items: center;" title="Отправить картинку или видео" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'"><span class="material-symbols-outlined">photo_camera</span></span>
+            <label for="file-upload" style="cursor: pointer; font-size: 24px; margin-right: 10px; color: var(--text-muted); transition: 0.2s; display: flex; align-items: center;" title="Отправить файл" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-muted)'"><span class="material-symbols-outlined">attach_file</span></label>
 
-            <button id="mic-btn" style="background: none; border: none; font-size: 22px; margin-right: 10px; cursor: pointer; color: var(--text-muted); transition: 0.2s;" title="Голосовое сообщение">🎤</button>
+            <button id="mic-btn" style="background: none; border: none; font-size: 24px; margin-right: 10px; cursor: pointer; color: var(--text-muted); transition: 0.2s; display: flex; align-items: center; padding: 0;" title="Голосовое сообщение"><span class="material-symbols-outlined">mic</span></button>
             
             <input type="text" id="message-input" placeholder="Написать сообщение..." autocomplete="off">
-            <button id="send-btn" aria-label="Отправить">↑</button>
+            <button id="send-btn" aria-label="Отправить" style="display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">send</span></button>
         </div>
         
     </div>
@@ -446,7 +447,7 @@
         <h3 style="margin: 0 0 10px 0; color: var(--text-main); text-align: center;">Что создаем?</h3>
         
         <button id="choice-group-btn" style="padding: 15px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-main); font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 15px; transition: 0.2s;" onmouseover="this.style.borderColor='var(--primary-color)'" onmouseout="this.style.borderColor='var(--border-color)'">
-            <span style="font-size: 24px;">👥</span>
+            <span class="material-symbols-outlined" style="font-size: 24px;">group</span>
             <div style="text-align: left;">
                 <b style="display: block; margin-bottom: 3px;">Группу</b>
                 <span style="font-size: 12px; color: var(--text-muted);">Общение для всех участников</span>
@@ -454,7 +455,7 @@
         </button>
 
         <button id="choice-channel-btn" style="padding: 15px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-main); font-size: 16px; cursor: pointer; display: flex; align-items: center; gap: 15px; transition: 0.2s;" onmouseover="this.style.borderColor='var(--primary-color)'" onmouseout="this.style.borderColor='var(--border-color)'">
-            <span style="font-size: 24px;">📢</span>
+            <span class="material-symbols-outlined" style="font-size: 24px;">campaign</span>
             <div style="text-align: left;">
                 <b style="display: block; margin-bottom: 3px;">Канал</b>
                 <span style="font-size: 12px; color: var(--text-muted);">Вещание новостей (пишут только админы)</span>
@@ -1650,7 +1651,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 // Рисуем аватарку ИЛИ иконку (Рупор для канала, Люди для группы)
                 const avatarHtml = group.avatarHash 
                     ? `<img data-avatar-type="group" data-avatar-id="${group.id}" data-avatar-hash="${group.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`
-                    : (group.isChannel ? '📢' : '👥');
+                    : (group.isChannel ? '<span class="material-symbols-outlined" style="font-size: 24px;">campaign</span>' : '<span class="material-symbols-outlined" style="font-size: 24px;">group</span>');
                 
                 const safeGroupName = escapeHTML(group.name);
                 const typeText = group.isChannel ? 'Канал' : 'Группа';

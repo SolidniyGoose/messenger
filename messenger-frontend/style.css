@@ -684,3 +684,9 @@ body.dark-theme ::webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); }
     background: rgba(255, 255, 255, 0.1);
     border-radius: 10px;
 }
+
+/* Material Symbols Adjustments */
+.material-symbols-outlined {
+    vertical-align: middle;
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
