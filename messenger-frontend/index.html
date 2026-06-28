@@ -4735,6 +4735,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     let localTracks = [];
     let isCallActive = false;
     let pendingCallTimeout = null;
+    let activeCallPeer = null;
 
     const incomingModal = document.getElementById('incoming-call-modal');
     const activeModal = document.getElementById('active-call-modal');
@@ -4764,6 +4765,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             roomName: roomName,
             isVideo: isVideo
         });
+        activeCallPeer = currentChatUser;
         
         activeModal.style.display = 'flex';
         document.getElementById('call-status-text').textContent = 'Звоним...';
@@ -4916,6 +4918,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         if (currentIncomingCall.isGroupCall) {
             await joinLiveKitRoom(currentIncomingCall.roomName, false);
         } else {
+            activeCallPeer = currentIncomingCall.caller;
             socket.emit('call_accepted', {
                 caller: currentIncomingCall.caller,
                 recipient: myUsername,
@@ -4953,7 +4956,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         if (isCallActive && !currentIncomingCall && !currentChatIsGroup) {
             sendPersonalCallSystemMessage("Видеочат завершен");
         }
-        socket.emit('call_ended', { caller: myUsername, recipient: currentChatUser || (currentIncomingCall ? currentIncomingCall.caller : null) });
+        
+        let recipientToNotify = activeCallPeer || (currentIncomingCall ? currentIncomingCall.caller : null) || currentChatUser;
+        socket.emit('call_ended', { caller: myUsername, recipient: recipientToNotify });
+        
         endCallLocally();
     }
 
@@ -5004,6 +5010,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             currentRoom.disconnect();
             currentRoom = null;
         }
+        activeCallPeer = null;
         localTracks.forEach(t => {
             t.stop();
         });
