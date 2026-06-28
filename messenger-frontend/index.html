@@ -1676,112 +1676,118 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             // СОРТИРУЕМ ПО ВРЕМЕНИ (Новые сверху)
             combinedChats.sort((a, b) => b.time - a.time);
 
-            // Рендерим отсортированный список
+            // Рендерим отсортированный список (Ждем отрисовки превью, чтобы избежать мерцания)
+            const fragment = document.createDocumentFragment();
+            const renderPromises = [];
+
             for (const chatObj of combinedChats) {
                 if (chatObj.type === 'group') {
                     const group = chatObj.data;
-                const chatItem = document.createElement('div');
-                chatItem.className = 'chat-mock';
-                
-                if (group.id !== currentChatUser) { 
-                    chatItem.style.background = 'var(--input-bg)';
-                    chatItem.style.color = 'var(--text-main)';
-                }
-                
-                // Рисуем аватарку ИЛИ иконку (Рупор для канала, Люди для группы)
-                const avatarHtml = group.avatarHash 
-                    ? `<img data-avatar-type="group" data-avatar-id="${group.id}" data-avatar-hash="${group.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`
-                    : (group.isChannel ? '<span class="material-symbols-outlined" style="font-size: 24px;">campaign</span>' : '<span class="material-symbols-outlined" style="font-size: 24px;">group</span>');
-                
-                const safeGroupName = escapeHTML(group.name);
-                const typeText = group.isChannel ? 'Канал' : 'Группа';
+                    const chatItem = document.createElement('div');
+                    chatItem.className = 'chat-mock';
+                    
+                    if (group.id !== currentChatUser) { 
+                        chatItem.style.background = 'var(--input-bg)';
+                        chatItem.style.color = 'var(--text-main)';
+                    }
+                    
+                    const avatarHtml = group.avatarHash 
+                        ? `<img data-avatar-type="group" data-avatar-id="${group.id}" data-avatar-hash="${group.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`
+                        : (group.isChannel ? '<span class="material-symbols-outlined" style="font-size: 24px;">campaign</span>' : '<span class="material-symbols-outlined" style="font-size: 24px;">group</span>');
+                    
+                    const safeGroupName = escapeHTML(group.name);
+                    const typeText = group.isChannel ? 'Канал' : 'Группа';
 
-                chatItem.style.display = 'flex';
-                chatItem.style.justifyContent = 'space-between';
-                chatItem.style.alignItems = 'center';
-                
-                chatItem.innerHTML = `
-                    <div style="display: flex; flex: 1; align-items: center; min-width: 0;">
-                        <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; width: 48px; height: 48px;">
-                            ${avatarHtml}
-                        </div>
-                        <div class="chat-info" style="flex: 1; min-width: 0; margin-right: 10px; margin-left: 15px;">
-                            <div style="font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeGroupName}</div>
-                            <div style="display: flex; align-items: center;">
-                                <div class="preview-text" style="font-size: 13px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${typeText} (${group._count.members} уч.)</div>
+                    chatItem.style.display = 'flex';
+                    chatItem.style.justifyContent = 'space-between';
+                    chatItem.style.alignItems = 'center';
+                    
+                    chatItem.innerHTML = `
+                        <div style="display: flex; flex: 1; align-items: center; min-width: 0;">
+                            <div class="avatar" style="background: var(--gradient-primary); color: white; border-radius: 35%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; width: 48px; height: 48px;">
+                                ${avatarHtml}
+                            </div>
+                            <div class="chat-info" style="flex: 1; min-width: 0; margin-right: 10px; margin-left: 15px;">
+                                <div style="font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeGroupName}</div>
+                                <div style="display: flex; align-items: center;">
+                                    <div class="preview-text" style="font-size: 13px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${typeText} (${group._count.members} уч.)</div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="chat-meta" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; flex-shrink: 0; min-width: 40px;">
-                        <div class="preview-time" style="font-size: 11px; opacity: 0.7; margin-bottom: 4px;"></div>
-                        <div class="unread-badge" style="display: none; background: var(--primary-color); color: white; font-size: 11px; font-weight: bold; border-radius: 10px; padding: 2px 6px; min-width: 18px; text-align: center;"></div>
-                    </div>
-                `;
-                
-                renderChatPreview(
-                    chatItem.querySelector('.preview-text'), 
-                    chatItem.querySelector('.preview-time'), 
-                    chatItem.querySelector('.unread-badge'), 
-                    `group_${group.id}`, 
-                    true
-                );
-                
-                chatItem.addEventListener('click', () => openGroupChat(group));
-                chatsContainer.appendChild(chatItem);
+                        <div class="chat-meta" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; flex-shrink: 0; min-width: 40px;">
+                            <div class="preview-time" style="font-size: 11px; opacity: 0.7; margin-bottom: 4px;"></div>
+                            <div class="unread-badge" style="display: none; background: var(--primary-color); color: white; font-size: 11px; font-weight: bold; border-radius: 10px; padding: 2px 6px; min-width: 18px; text-align: center;"></div>
+                        </div>
+                    `;
+                    
+                    const p = renderChatPreview(
+                        chatItem.querySelector('.preview-text'), 
+                        chatItem.querySelector('.preview-time'), 
+                        chatItem.querySelector('.unread-badge'), 
+                        `group_${group.id}`, 
+                        true
+                    );
+                    renderPromises.push(p);
+                    
+                    chatItem.addEventListener('click', () => openGroupChat(group));
+                    fragment.appendChild(chatItem);
                 } else if (chatObj.type === 'user') {
                     const user = chatObj.data;
+                    const chatItem = document.createElement('div');
+                    chatItem.className = 'chat-mock';
+                    
+                    if (user.username !== currentChatUser) {
+                        chatItem.style.background = 'var(--input-bg)';
+                        chatItem.style.color = 'var(--text-main)';
+                    }
 
-                const chatItem = document.createElement('div');
-                chatItem.className = 'chat-mock';
-                
-                if (user.username !== currentChatUser) {
-                    chatItem.style.background = 'var(--input-bg)';
-                    chatItem.style.color = 'var(--text-main)';
-                }
+                    const displayName = user.displayName || user.username;
+                    const safeDisplayName = escapeHTML(displayName);
 
-                const displayName = user.displayName || user.username;
-                const safeDisplayName = escapeHTML(displayName);
-
-                const userAvatarHtml = user.avatarHash 
-                    ? `<img data-avatar-type="user" data-avatar-id="${user.username}" data-avatar-hash="${user.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`
-                    : displayName.charAt(0).toUpperCase();
-                
-                const avatarBackground = !user.avatarHash ? 'background: var(--gradient-primary); color: white;' : '';
-                
-                chatItem.style.display = 'flex';
-                chatItem.style.justifyContent = 'space-between';
-                chatItem.style.alignItems = 'center';
-                
-                chatItem.innerHTML = `
-                    <div style="display: flex; flex: 1; align-items: center; min-width: 0;">
-                        <div class="avatar" style="${avatarBackground} border-radius: 50%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; width: 48px; height: 48px;">
-                            ${userAvatarHtml}
-                        </div>
-                        <div class="chat-info" style="flex: 1; min-width: 0; margin-right: 10px; margin-left: 15px;">
-                            <div style="font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeDisplayName}</div>
-                            <div style="display: flex; align-items: center;">
-                                <div class="preview-text" style="font-size: 13px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Нажмите для чата</div>
+                    const userAvatarHtml = user.avatarHash 
+                        ? `<img data-avatar-type="user" data-avatar-id="${user.username}" data-avatar-hash="${user.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`
+                        : displayName.charAt(0).toUpperCase();
+                    
+                    const avatarBackground = !user.avatarHash ? 'background: var(--gradient-primary); color: white;' : '';
+                    
+                    chatItem.style.display = 'flex';
+                    chatItem.style.justifyContent = 'space-between';
+                    chatItem.style.alignItems = 'center';
+                    
+                    chatItem.innerHTML = `
+                        <div style="display: flex; flex: 1; align-items: center; min-width: 0;">
+                            <div class="avatar" style="${avatarBackground} border-radius: 50%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; width: 48px; height: 48px;">
+                                ${userAvatarHtml}
+                            </div>
+                            <div class="chat-info" style="flex: 1; min-width: 0; margin-right: 10px; margin-left: 15px;">
+                                <div style="font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeDisplayName}</div>
+                                <div style="display: flex; align-items: center;">
+                                    <div class="preview-text" style="font-size: 13px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Нажмите для чата</div>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="chat-meta" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; flex-shrink: 0; min-width: 40px;">
-                        <div class="preview-time" style="font-size: 11px; opacity: 0.7; margin-bottom: 4px;"></div>
-                        <div class="unread-badge" style="display: none; background: var(--primary-color); color: white; font-size: 11px; font-weight: bold; border-radius: 10px; padding: 2px 6px; min-width: 18px; text-align: center;"></div>
-                    </div>
-                `;
-                
-                renderChatPreview(
-                    chatItem.querySelector('.preview-text'), 
-                    chatItem.querySelector('.preview-time'), 
-                    chatItem.querySelector('.unread-badge'), 
-                    `chat_${user.username}`, 
-                    false
-                );
-                
-                chatItem.addEventListener('click', () => openChatWith(user));
-                chatsContainer.appendChild(chatItem);
+                        <div class="chat-meta" style="display: flex; flex-direction: column; align-items: flex-end; justify-content: center; flex-shrink: 0; min-width: 40px;">
+                            <div class="preview-time" style="font-size: 11px; opacity: 0.7; margin-bottom: 4px;"></div>
+                            <div class="unread-badge" style="display: none; background: var(--primary-color); color: white; font-size: 11px; font-weight: bold; border-radius: 10px; padding: 2px 6px; min-width: 18px; text-align: center;"></div>
+                        </div>
+                    `;
+                    
+                    const p = renderChatPreview(
+                        chatItem.querySelector('.preview-text'), 
+                        chatItem.querySelector('.preview-time'), 
+                        chatItem.querySelector('.unread-badge'), 
+                        `chat_${user.username}`, 
+                        false
+                    );
+                    renderPromises.push(p);
+                    
+                    chatItem.addEventListener('click', () => openChatWith(user));
+                    fragment.appendChild(chatItem);
                 }
             }
+            
+            await Promise.all(renderPromises);
+            chatsContainer.appendChild(fragment);
 
             // Рендерим ГЛОБАЛЬНЫЙ ПОИСК
             if (isSearch) {
