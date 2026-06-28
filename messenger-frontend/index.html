@@ -79,7 +79,7 @@
     <div id="video-grid" style="flex: 1; display: flex; flex-wrap: wrap; gap: 10px; padding: 10px; position: relative; justify-content: center; align-items: center; align-content: center; overflow-y: auto;">
         <div id="call-status-text" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 15px; font-size: 14px; z-index: 10;">Соединение...</div>
     </div>
-    <div style="height: 100px; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; gap: 20px; padding-bottom: env(safe-area-inset-bottom); position: relative;">
+    <div style="height: 100px; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; gap: 20px; padding-bottom: env(safe-area-inset-bottom); position: relative; z-index: 100;">
         <button id="minimize-call-btn" style="position: absolute; left: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;" title="Свернуть"><span class="material-symbols-outlined">call_received</span></button>
         <button id="toggle-mic-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">mic</span></button>
         
@@ -1136,6 +1136,12 @@
                             const displayText = type === 'other-message' ? senderPrefix + text : text;
                             displayMessage(displayText, type, msg.sender, new Date(msg.createdAt), false, '', msg.isRead, false, false, msg.id, box.replyTo, false, false, msg.isEdited, box.forwardedFrom);
                             if (msg.reactions) renderReactions(msg.id, typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : msg.reactions);
+                        }
+                    } else if (box.type === 'SYSTEM_EVENT') {
+                        const decryptedBuffer = await decryptMessage(box, currentSharedKey);
+                        if (decryptedBuffer) {
+                            const text = escapeHTML(bufferToText(decryptedBuffer));
+                            displayMessage(text, 'system-message', 'SYSTEM', new Date(msg.createdAt), false, '', false, false, false, msg.id);
                         }
                     } else if (box.type === 'ALBUM') {
                         // --- РАСШИФРОВКА АЛЬБОМА ---
@@ -4527,6 +4533,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     const text = escapeHTML(bufferToText(decryptedBuffer));
                     const displayText = payload.isGroup ? senderPrefix + text : text;
                     displayMessage(displayText, type, payload.sender, new Date(), false, '', false, false, false, payload.id, box.replyTo, false, false, false, box.forwardedFrom);
+                } else if (box.type === 'SYSTEM_EVENT') {
+                    const text = escapeHTML(bufferToText(decryptedBuffer));
+                    displayMessage(text, 'system-message', 'SYSTEM', new Date(), false, '', false, false, false, payload.id);
                 } else if (box.type === 'ALBUM') {
                     const mediaUrls = [];
                     for (let imgBox of box.images) {
@@ -4917,6 +4926,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         setTimeout(() => document.getElementById('call-status-text').style.display = 'none', 2000);
         
         await joinLiveKitRoom(data.roomName, data.isVideo); 
+        sendPersonalCallSystemMessage("Видеочат начат");
     });
 
     socket.on('call_rejected_by_recipient', () => {
@@ -4934,8 +4944,41 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     });
 
     function endCall() {
+        if (isCallActive && !currentIncomingCall && !currentChatIsGroup) {
+            sendPersonalCallSystemMessage("Видеочат завершен");
+        }
         socket.emit('call_ended', { caller: myUsername, recipient: currentChatUser || (currentIncomingCall ? currentIncomingCall.caller : null) });
         endCallLocally();
+    }
+
+    async function sendPersonalCallSystemMessage(text) {
+        if (!currentSharedKey || currentChatIsGroup || !currentChatUser) return;
+        try {
+            const msgId = crypto.randomUUID();
+            const encryptedData = await encryptMessage(new TextEncoder().encode(text), currentSharedKey);
+            const payload = {
+                id: msgId,
+                sender: myUsername,
+                recipient: currentChatUser,
+                groupId: null,
+                isGroup: false,
+                secretBox: { 
+                    ...encryptedData, 
+                    type: 'SYSTEM_EVENT',
+                    isSystem: true
+                }
+            };
+            socket.emit('send_message', { text: JSON.stringify(payload) });
+            appendToHistoryCache(false, currentChatUser, {
+                id: msgId,
+                sender: myUsername,
+                secretBox: payload.secretBox,
+                createdAt: new Date().toISOString(),
+                isRead: false
+            });
+            displayMessage(text, 'system-message', 'SYSTEM', new Date(), false, '', false, false, false, msgId);
+            document.getElementById('messages-list').scrollTop = document.getElementById('messages-list').scrollHeight;
+        } catch (e) { console.error("Error sending system call message:", e); }
     }
     const minimizeCallBtn = document.getElementById('minimize-call-btn');
     const returnToCallBtn = document.getElementById('return-to-call-btn');
