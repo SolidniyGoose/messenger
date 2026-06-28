@@ -1743,6 +1743,75 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 chatItem.addEventListener('click', () => openChatWith(user));
                 chatsContainer.appendChild(chatItem);
             });
+
+            // Рендерим ГЛОБАЛЬНЫЙ ПОИСК
+            if (isSearch) {
+                if (globalUsersToShow.length > 0) {
+                    const globalHeader = document.createElement('div');
+                    globalHeader.style.cssText = 'padding: 10px 15px; font-size: 13px; font-weight: bold; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 5px;';
+                    globalHeader.textContent = 'Глобальный поиск';
+                    chatsContainer.appendChild(globalHeader);
+
+                    globalUsersToShow.forEach(user => {
+                        if (user.username === myUsername) return;
+
+                        const chatItem = document.createElement('div');
+                        chatItem.className = 'chat-mock';
+                        
+                        if (user.username !== currentChatUser) {
+                            chatItem.style.background = 'var(--input-bg)';
+                            chatItem.style.color = 'var(--text-main)';
+                        }
+
+                        const displayName = user.displayName || user.username;
+                        const safeDisplayName = escapeHTML(displayName);
+                        const safeBio = user.bio ? escapeHTML(user.bio) : '';
+
+                        const userAvatarHtml = user.avatarHash 
+                            ? `<img data-avatar-type="user" data-avatar-id="${user.username}" data-avatar-hash="${user.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; border-radius:50%; object-fit:cover;">`
+                            : displayName.charAt(0).toUpperCase();
+                        
+                        const avatarBackground = !user.avatarHash ? 'background: var(--gradient-primary); color: white;' : '';
+                        
+                        chatItem.style.display = 'flex';
+                        chatItem.style.justifyContent = 'space-between';
+                        chatItem.style.alignItems = 'center';
+                        
+                        chatItem.innerHTML = `
+                            <div style="display: flex; flex: 1; align-items: center; min-width: 0;">
+                                <div class="avatar" style="${avatarBackground} border-radius: 50%; font-size: 20px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; width: 48px; height: 48px;">
+                                    ${userAvatarHtml}
+                                </div>
+                                <div class="chat-info" style="flex: 1; min-width: 0; margin-right: 10px; margin-left: 15px;">
+                                    <div style="font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${safeDisplayName}</div>
+                                    <div style="display: flex; align-items: center;">
+                                        <div class="preview-text" style="font-size: 13px; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-muted);">${safeBio || '@' + user.username}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        chatItem.addEventListener('click', () => {
+                            // При клике на глобального юзера, добавляем его в активные (чтобы сразу появился)
+                            if (!GLOB_activeUsers.some(u => u.username === user.username)) {
+                                GLOB_activeUsers.push(user);
+                            }
+                            document.querySelector('.search-bar').value = ''; // Очищаем поиск
+                            renderChatsLocally(GLOB_activeUsers, GLOB_myGroups);
+                            openChatWith(user);
+                        });
+                        chatsContainer.appendChild(chatItem);
+                    });
+                }
+
+                if (usersToShow.length === 0 && groupsToShow.length === 0 && globalUsersToShow.length === 0) {
+                    const emptyState = document.createElement('div');
+                    emptyState.style.cssText = 'padding: 20px; text-align: center; color: var(--text-muted); font-size: 14px;';
+                    emptyState.textContent = 'Ничего не найдено';
+                    chatsContainer.appendChild(emptyState);
+                }
+            }
+
             processAvatars(chatsContainer);
         } catch (error) {
             console.error("❌ Ошибка загрузки чатов:", error);
