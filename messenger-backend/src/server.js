@@ -286,9 +286,20 @@ app.post('/api/users/update', async (req, res) => {
     }
 
     try {
+        const currentUser = await prisma.user.findUnique({ where: { username } });
+        let newHistory = [];
+        if (currentUser && currentUser.avatarHistory) {
+            if (typeof currentUser.avatarHistory === 'string') newHistory = JSON.parse(currentUser.avatarHistory);
+            else if (Array.isArray(currentUser.avatarHistory)) newHistory = currentUser.avatarHistory;
+        }
+        
+        if (avatar && avatar !== currentUser?.avatar) {
+            newHistory.unshift(avatar); // Добавляем новую аватарку в начало
+        }
+        
         const updatedUser = await prisma.user.update({
             where: { username },
-            data: { displayName, avatar, bio }
+            data: { displayName, avatar, bio, avatarHistory: newHistory }
         });
         res.json({ success: true, user: updatedUser });
     } catch (e) {
@@ -300,13 +311,78 @@ app.post('/api/users/update', async (req, res) => {
 app.post('/api/groups/:id/update-avatar', async (req, res) => {
     const { avatar } = req.body;
     try {
+        const currentGroup = await prisma.group.findUnique({ where: { id: req.params.id } });
+        let newHistory = [];
+        if (currentGroup && currentGroup.avatarHistory) {
+            if (typeof currentGroup.avatarHistory === 'string') newHistory = JSON.parse(currentGroup.avatarHistory);
+            else if (Array.isArray(currentGroup.avatarHistory)) newHistory = currentGroup.avatarHistory;
+        }
+        
+        if (avatar && avatar !== currentGroup?.avatar) {
+            newHistory.unshift(avatar); // Добавляем в начало
+        }
+        
         await prisma.group.update({
             where: { id: req.params.id },
-            data: { avatar }
+            data: { avatar, avatarHistory: newHistory }
         });
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ success: false });
+    }
+});
+
+// Получение истории аватарок группы
+app.get('/api/groups/:id/avatars', async (req, res) => {
+    try {
+        const group = await prisma.group.findUnique({
+            where: { id: req.params.id },
+            select: { avatarHistory: true }
+        });
+        if (!group || !group.avatarHistory) return res.json([]);
+        
+        let history = [];
+        if (typeof group.avatarHistory === 'string') history = JSON.parse(group.avatarHistory);
+        else if (Array.isArray(group.avatarHistory)) history = group.avatarHistory;
+        
+        res.json(history);
+    } catch (error) {
+        res.status(500).json({ error: "Ошибка" });
+    }
+});
+
+// Удаление аватарки группы из истории
+app.delete('/api/groups/:id/avatars/:index', async (req, res) => {
+    try {
+        const id = req.params.id;
+        const index = parseInt(req.params.index);
+        
+        const group = await prisma.group.findUnique({ where: { id } });
+        if (!group) return res.status(404).json({ error: "Не найдено" });
+
+        let history = [];
+        if (group.avatarHistory) {
+            if (typeof group.avatarHistory === 'string') history = JSON.parse(group.avatarHistory);
+            else if (Array.isArray(group.avatarHistory)) history = group.avatarHistory;
+        }
+
+        if (index >= 0 && index < history.length) {
+            history.splice(index, 1);
+            const newCurrentAvatar = history.length > 0 ? history[0] : null;
+            
+            await prisma.group.update({
+                where: { id },
+                data: { 
+                    avatarHistory: history,
+                    avatar: newCurrentAvatar
+                }
+            });
+            res.json({ success: true, newAvatar: newCurrentAvatar, avatarHistory: history });
+        } else {
+            res.status(400).json({ error: "Неверный индекс" });
+        }
+    } catch (e) {
+        res.status(500).json({ error: "Ошибка удаления" });
     }
 });
 

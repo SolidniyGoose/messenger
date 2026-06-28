@@ -68,6 +68,64 @@ router.get('/search', async (req, res) => {
         console.error("Ошибка при поиске пользователей:", error);
         res.status(500).json({ error: "Ошибка поиска" });
     }
+// 6. ПОЛУЧЕНИЕ ИСТОРИИ АВАТАРОК ПОЛЬЗОВАТЕЛЯ
+router.get('/:username/avatars', async (req, res) => {
+    try {
+        const user = await prisma.user.findUnique({
+            where: { username: req.params.username },
+            select: { avatarHistory: true }
+        });
+        if (!user || !user.avatarHistory) return res.json([]);
+        
+        let history = [];
+        if (typeof user.avatarHistory === 'string') {
+            history = JSON.parse(user.avatarHistory);
+        } else if (Array.isArray(user.avatarHistory)) {
+            history = user.avatarHistory;
+        }
+        res.json(history);
+    } catch (error) {
+        console.error("Ошибка при получении истории аватарок:", error);
+        res.status(500).json({ error: "Ошибка" });
+    }
+});
+
+// 7. УДАЛЕНИЕ АВАТАРКИ ИЗ ИСТОРИИ
+router.delete('/avatars/:index', async (req, res) => {
+    try {
+        const { username } = req.body;
+        const index = parseInt(req.params.index);
+        
+        const user = await prisma.user.findUnique({ where: { username } });
+        if (!user) return res.status(404).json({ error: "Не найден" });
+
+        let history = [];
+        if (user.avatarHistory) {
+            if (typeof user.avatarHistory === 'string') history = JSON.parse(user.avatarHistory);
+            else if (Array.isArray(user.avatarHistory)) history = user.avatarHistory;
+        }
+
+        if (index >= 0 && index < history.length) {
+            history.splice(index, 1);
+            
+            // Если мы удалили текущую аватарку (index 0) - обновляем главную
+            const newCurrentAvatar = history.length > 0 ? history[0] : null;
+            
+            await prisma.user.update({
+                where: { username },
+                data: { 
+                    avatarHistory: history,
+                    avatar: newCurrentAvatar
+                }
+            });
+            res.json({ success: true, newAvatar: newCurrentAvatar, avatarHistory: history });
+        } else {
+            res.status(400).json({ error: "Неверный индекс" });
+        }
+    } catch (e) {
+        console.error("Ошибка удаления аватарки:", e);
+        res.status(500).json({ error: "Ошибка удаления" });
+    }
 });
 
 // 5.5. ПОЛУЧЕНИЕ САМОЙ АВАТАРКИ (Для кэширования IndexedDB)

@@ -506,6 +506,7 @@
 
 <div id="image-viewer" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; flex-direction: column;">
     <div style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; font-size: 16px; font-weight: bold; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px; z-index: 10001;" id="viewer-counter">1 / 1</div>
+    <button id="viewer-delete-btn" style="display: none; position: absolute; top: 20px; right: 70px; background: none; border: none; color: #ff4d4d; font-size: 28px; cursor: pointer; z-index: 10001;" title="Удалить">🗑️</button>
     <button id="viewer-close-btn" style="position: absolute; top: 20px; right: 20px; background: none; border: none; color: white; font-size: 36px; cursor: pointer; z-index: 10001;">&times;</button>
     
     <div class="viewer-img-container" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; position: relative;">
@@ -695,7 +696,7 @@
                     }
                     
                     if (activeGroup.avatarHash) {
-                        avatar.innerHTML = `<img data-avatar-type="group" data-avatar-id="${activeGroup.id}" data-avatar-hash="${activeGroup.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%; cursor: pointer;" onclick="if(this.src.length > 100) openGallery(this.src, 0)">`;
+                        avatar.innerHTML = `<img data-avatar-type="group" data-avatar-id="${activeGroup.id}" data-avatar-hash="${activeGroup.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%; cursor: pointer;" onclick="openAvatarGallery(this, 'group', '${activeGroup.id}')">`;
                     } else {
                         avatar.innerHTML = `<span class="material-symbols-outlined" style="font-size: 50px;">group</span>`;
                     }
@@ -763,7 +764,7 @@
                     }
 
                     if (userData.avatarHash) {
-                        avatar.innerHTML = `<img data-avatar-type="user" data-avatar-id="${userData.username}" data-avatar-hash="${userData.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:50%; cursor: pointer;" onclick="if(this.src.length > 100) openGallery(this.src, 0)">`;
+                        avatar.innerHTML = `<img data-avatar-type="user" data-avatar-id="${userData.username}" data-avatar-hash="${userData.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:50%; cursor: pointer;" onclick="openAvatarGallery(this, 'user', '${userData.username}')">`;
                     } else {
                         avatar.innerHTML = (userData.displayName || userData.username).charAt(0).toUpperCase();
                     }
@@ -2547,6 +2548,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     let currentGalleryMedia = []; // Теперь тут массив объектов {url, type}
     let currentGalleryIndex = 0;
     let currentScale = 1;
+    let currentGalleryContext = null;
 
     function updateGalleryUI() {
         const media = currentGalleryMedia[currentGalleryIndex];
@@ -2572,15 +2574,67 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         viewerPrevBtn.style.display = currentGalleryMedia.length > 1 ? 'block' : 'none';
         viewerNextBtn.style.display = currentGalleryMedia.length > 1 ? 'block' : 'none';
         
+        const deleteBtn = document.getElementById('viewer-delete-btn');
+        if (currentGalleryContext && (currentGalleryContext.canDelete || currentGalleryContext.id === myUsername)) {
+            deleteBtn.style.display = 'block';
+        } else {
+            deleteBtn.style.display = 'none';
+        }
+        
         currentScale = 1; 
         imageViewerImg.style.transform = `scale(1)`;
     }
 
+    // Обработчик удаления аватарки
+    document.getElementById('viewer-delete-btn').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (!currentGalleryContext) return;
+        
+        if (!confirm('Удалить эту аватарку?')) return;
+        
+        try {
+            const url = currentGalleryContext.type === 'user' 
+                ? `/api/users/avatars/${currentGalleryIndex}` 
+                : `/api/groups/${currentGalleryContext.id}/avatars/${currentGalleryIndex}`;
+                
+            const res = await fetch(url, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: myUsername })
+            });
+            
+            if (res.ok) {
+                currentGalleryMedia.splice(currentGalleryIndex, 1);
+                if (currentGalleryMedia.length === 0) {
+                    closeGallery();
+                    // Обновляем аватарку в UI на дефолтную (можно просто перезагрузить страницу или триггернуть апдейт)
+                    location.reload(); 
+                } else {
+                    if (currentGalleryIndex >= currentGalleryMedia.length) {
+                        currentGalleryIndex = currentGalleryMedia.length - 1;
+                    }
+                    updateGalleryUI();
+                    
+                    // Обновляем текущую аватарку если мы удалили первую (индекс 0) и мы на странице профиля
+                    if (currentGalleryIndex === 0) {
+                        const infoAvatarImg = document.querySelector('#info-avatar img');
+                        if (infoAvatarImg) infoAvatarImg.src = currentGalleryMedia[0].url;
+                        const previewAvatarImg = document.querySelector('#profile-preview-avatar img');
+                        if (previewAvatarImg) previewAvatarImg.src = currentGalleryMedia[0].url;
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    });
+
     // Принимаем закодированную строку JSON вместо простых ссылок
-    window.openGallery = function(encodedMediaString, startIndex = 0) {
+    window.openGallery = function(encodedMediaString, startIndex = 0, context = null) {
         try {
             currentGalleryMedia = JSON.parse(decodeURIComponent(encodedMediaString));
             currentGalleryIndex = startIndex;
+            currentGalleryContext = context;
             updateGalleryUI();
             
             imageViewer.style.display = 'flex'; 
@@ -2589,15 +2643,43 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             // Защита от старых фото (если там просто ссылка)
             currentGalleryMedia = [{ url: encodedMediaString, type: 'image/jpeg' }];
             currentGalleryIndex = 0;
+            currentGalleryContext = context;
             updateGalleryUI();
             imageViewer.style.display = 'flex'; 
             setTimeout(() => imageViewer.classList.add('show'), 10); 
         }
     };
+    
+    window.openAvatarGallery = async function(element, type, id) {
+        if (!element || element.src.length < 100) return;
+        
+        // Быстро показываем текущую
+        const initialMedia = [{ url: element.src, type: 'image/jpeg' }];
+        const isGroupAdmin = type === 'group' && document.getElementById('group-avatar-edit-controls').style.display !== 'none';
+        const context = { type, id, canDelete: (type === 'user' && id === myUsername) || isGroupAdmin };
+        
+        openGallery(encodeURIComponent(JSON.stringify(initialMedia)), 0, context);
+        
+        try {
+            const res = await fetch(type === 'user' ? `/api/users/${id}/avatars` : `/api/groups/${id}/avatars`);
+            if (res.ok) {
+                const avatars = await res.json();
+                if (avatars && avatars.length > 0) {
+                    const mediaArray = avatars.map(a => ({ url: a, type: 'image/jpeg' }));
+                    if (currentGalleryContext && currentGalleryContext.id === id) {
+                        currentGalleryMedia = mediaArray;
+                        currentGalleryIndex = 0;
+                        updateGalleryUI();
+                    }
+                }
+            }
+        } catch (e) { console.error(e); }
+    };
 
     const closeGallery = () => { 
         imageViewer.classList.remove('show'); 
         imageViewerVid.pause(); // Останавливаем плеер
+        currentGalleryContext = null;
         setTimeout(() => { 
             imageViewer.style.display = 'none'; 
             imageViewerImg.src = ''; 
@@ -2670,7 +2752,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
     function updatePreview(base64, name) {
         if (base64) {
-            previewAvatar.innerHTML = `<img src="${base64}" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" onclick="if(this.src.length > 100) openGallery(this.src, 0)">`;
+            previewAvatar.innerHTML = `<img src="${base64}" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" onclick="openAvatarGallery(this, 'user', '${name}')">`;
             deleteAvatarBtn.style.display = 'block';
             tempAvatarBase64 = base64;
         } else {
@@ -2796,7 +2878,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 });
 
                 if (res.ok) {
-                    document.getElementById('info-avatar').innerHTML = `<img src="${compressedBase64}" style="width:100%; height:100%; object-fit:cover; border-radius:35%; cursor:pointer;" onclick="if(this.src.length > 100) openGallery(this.src, 0)">`;
+                    document.getElementById('info-avatar').innerHTML = `<img src="${compressedBase64}" style="width:100%; height:100%; object-fit:cover; border-radius:35%; cursor:pointer;" onclick="openAvatarGallery(this, 'group', '${currentChatUser}')">`;
                     loadActiveChats(); // Обновляем сайдбар
                 }
             });

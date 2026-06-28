@@ -15,6 +15,7 @@ model User {
   encryptedPrivKey String?  
   displayName String?
   avatar      String?
+  avatarHistory Json? @default("[]")
   bio         String?
   createdAt DateTime @default(now())
 }
@@ -39,6 +40,7 @@ model Group {
   isChannel Boolean  @default(false)
   isPublic  Boolean  @default(false)
   avatar    String?
+  avatarHistory Json? @default("[]")
   bio       String?
   createdAt DateTime @default(now())
 
