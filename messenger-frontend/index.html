@@ -198,17 +198,17 @@
             
             <div style="padding: 15px 20px; display: flex; flex-direction: column; gap: 15px; background: rgba(0,0,0,0.05); margin-top: auto;">
                 <div id="info-media-btn" style="display: flex; align-items: center; gap: 15px; color: var(--text-main); cursor: pointer; transition: 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-main)'">
-                    <span style="font-size: 20px;">🖼️</span><span style="font-weight: 500;">Медиа</span>
+                    <span class="material-symbols-outlined" style="font-size: 24px;">image</span><span style="font-weight: 500;">Медиа</span>
                 </div>
                 <div id="info-files-btn" style="display: flex; align-items: center; gap: 15px; color: var(--text-main); cursor: pointer; transition: 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-main)'">
-                    <span style="font-size: 20px;">📁</span><span style="font-weight: 500;">Файлы</span>
+                    <span class="material-symbols-outlined" style="font-size: 24px;">folder</span><span style="font-weight: 500;">Файлы</span>
                 </div>
                 <div id="info-links-btn" style="display: flex; align-items: center; gap: 15px; color: var(--text-main); cursor: pointer; transition: 0.2s;" onmouseover="this.style.color='var(--primary-color)'" onmouseout="this.style.color='var(--text-main)'">
-                    <span style="font-size: 20px;">🔗</span><span style="font-weight: 500;">Ссылки</span>
+                    <span class="material-symbols-outlined" style="font-size: 24px;">link</span><span style="font-weight: 500;">Ссылки</span>
                 </div>
                 <div style="height: 1px; background: var(--border-color); margin: 5px 0;"></div>
                 <div id="info-leave-btn" style="display: flex; align-items: center; gap: 15px; color: #ff4d4d; cursor: pointer; transition: 0.2s;" onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'">
-                    <span style="font-size: 20px;">🚪</span><span style="font-weight: 500;">Покинуть чат</span>
+                    <span class="material-symbols-outlined" style="font-size: 24px;">logout</span><span style="font-weight: 500;">Покинуть чат</span>
                 </div>
             </div>
         </div>
@@ -659,7 +659,7 @@
                     if (activeGroup.avatarHash) {
                         avatar.innerHTML = `<img data-avatar-type="group" data-avatar-id="${activeGroup.id}" data-avatar-hash="${activeGroup.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
                     } else {
-                        avatar.innerHTML = "👥";
+                        avatar.innerHTML = `<span class="material-symbols-outlined" style="font-size: 50px;">group</span>`;
                     }
                     
                     processAvatars(avatar);
