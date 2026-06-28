@@ -84,8 +84,7 @@
         <button id="toggle-mic-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">mic</span></button>
         
         <div style="display: flex; background: rgba(255,255,255,0.2); border-radius: 30px; backdrop-filter: blur(5px); position: relative;" id="cam-control-group">
-            <button id="toggle-cam-btn" style="width: 60px; height: 60px; border-radius: 30px 0 0 30px; background: transparent; color: white; border: none; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">videocam</span></button>
-            <div style="width: 1px; background: rgba(255,255,255,0.2); margin: 10px 0;"></div>
+            <button id="toggle-cam-btn" style="width: 60px; height: 60px; border-radius: 30px 0 0 30px; background: transparent; color: white; border: none; border-right: 1px solid rgba(255,255,255,0.2); font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">videocam</span></button>
             <button id="cam-quality-btn" style="width: 30px; height: 60px; border-radius: 0 30px 30px 0; background: transparent; color: white; border: none; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined" id="cam-quality-icon">expand_less</span></button>
             <div id="cam-quality-menu" style="display: none; position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); background: #222; border-radius: 15px; padding: 15px; width: 180px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10000; flex-direction: column; gap: 10px;">
                 <div style="color: var(--text-muted); font-size: 12px; font-weight: bold; text-transform: uppercase;">Разрешение</div>
@@ -105,8 +104,7 @@
         </div>
 
         <div style="display: flex; background: rgba(255,255,255,0.2); border-radius: 30px; backdrop-filter: blur(5px); position: relative;" id="screen-control-group">
-            <button id="toggle-screen-btn" style="width: 60px; height: 60px; border-radius: 30px 0 0 30px; background: transparent; color: white; border: none; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">computer</span></button>
-            <div style="width: 1px; background: rgba(255,255,255,0.2); margin: 10px 0;"></div>
+            <button id="toggle-screen-btn" style="width: 60px; height: 60px; border-radius: 30px 0 0 30px; background: transparent; color: white; border: none; border-right: 1px solid rgba(255,255,255,0.2); font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">computer</span></button>
             <button id="screen-quality-btn" style="width: 30px; height: 60px; border-radius: 0 30px 30px 0; background: transparent; color: white; border: none; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined" id="screen-quality-icon">expand_less</span></button>
             <div id="screen-quality-menu" style="display: none; position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); background: #222; border-radius: 15px; padding: 15px; width: 180px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10000; flex-direction: column; gap: 10px;">
                 <div style="color: var(--text-muted); font-size: 12px; font-weight: bold; text-transform: uppercase;">Разрешение экрана</div>
@@ -1606,6 +1604,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     
                     if (lastMsg.sender === 'SYSTEM') {
                         text = box.text;
+                    } else if (box.type === 'SYSTEM_EVENT') {
+                        const sharedKey = await getSharedKeyFor(cacheKey, isGroup);
+                        if (sharedKey) {
+                            const decryptedBuffer = await decryptMessage(box, sharedKey);
+                            if (decryptedBuffer) {
+                                text = escapeHTML(bufferToText(decryptedBuffer));
+                            }
+                        }
                     } else if (box.type === 'ALBUM') {
                         text = `${senderPrefix}${box.images.length} фото`;
                     } else if (box.type === 'AUDIO') {
@@ -5024,11 +5030,13 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         if (toggleScreenBtn) {
             toggleScreenBtn.innerHTML = '<span class="material-symbols-outlined">computer</span>';
             toggleScreenBtn.style.background = 'rgba(255,255,255,0.2)';
+            toggleScreenBtn.style.borderRightColor = 'rgba(255,255,255,0.2)';
         }
         const toggleCamBtn = document.getElementById('toggle-cam-btn');
         if (toggleCamBtn) {
             toggleCamBtn.innerHTML = '<span class="material-symbols-outlined">videocam</span>';
             toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
+            toggleCamBtn.style.borderRightColor = 'rgba(255,255,255,0.2)';
         }
         const toggleMicBtn = document.getElementById('toggle-mic-btn');
         if (toggleMicBtn) {
@@ -5361,6 +5369,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 if (cv) cv.style.display = 'block';
                 toggleCamBtn.innerHTML = '<span class="material-symbols-outlined">videocam</span>';
                 toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
+                toggleCamBtn.style.borderRightColor = 'rgba(255,255,255,0.2)';
             } else {
                 videoTrack.mute();
                 const avatar = document.getElementById(`avatar-${myUsername}`);
@@ -5369,6 +5378,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 if (cv) cv.style.display = 'none';
                 toggleCamBtn.innerHTML = '<span class="material-symbols-outlined">videocam_off</span>';
                 toggleCamBtn.style.background = '#ff3b30';
+                toggleCamBtn.style.borderRightColor = 'transparent';
             }
         } else {
             try {
@@ -5402,6 +5412,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 await currentRoom.localParticipant.setScreenShareEnabled(false);
                 toggleScreenBtn.innerHTML = '<span class="material-symbols-outlined">computer</span>';
                 toggleScreenBtn.style.background = 'rgba(255,255,255,0.2)';
+                toggleScreenBtn.style.borderRightColor = 'rgba(255,255,255,0.2)';
             } else {
                 await currentRoom.localParticipant.setScreenShareEnabled(true, { 
                     audio: true,
@@ -5409,6 +5420,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 });
                 toggleScreenBtn.innerHTML = '<span class="material-symbols-outlined">present_to_all</span>';
                 toggleScreenBtn.style.background = 'var(--primary-color)';
+                toggleScreenBtn.style.borderRightColor = 'transparent';
             }
         } catch (e) {
             console.error("Ошибка шаринга экрана:", e);
