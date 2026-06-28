@@ -185,6 +185,27 @@
         </div>
     </div>
 </div>
+
+<!-- Кроппер для аватарок -->
+<div id="avatar-crop-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 4000; flex-direction: column;">
+    <div style="display: flex; justify-content: space-between; padding: 15px 20px; z-index: 4002; background: rgba(0,0,0,0.5);">
+        <button id="crop-cancel-btn" style="background: none; border: none; color: white; font-size: 16px; cursor: pointer;">Отмена</button>
+        <span style="color: white; font-size: 16px; font-weight: bold;">Масштаб и позиция</span>
+        <button id="crop-apply-btn" style="background: none; border: none; color: var(--primary-color); font-size: 16px; font-weight: bold; cursor: pointer;">Готово</button>
+    </div>
+    
+    <div id="crop-container" style="flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; cursor: grab;">
+        <img id="crop-image" src="" style="position: absolute; transform-origin: center; pointer-events: none; max-width: none;">
+        <div style="position: absolute; top: 50%; left: 50%; width: 250px; height: 250px; transform: translate(-50%, -50%); border-radius: 50%; box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7); pointer-events: none; z-index: 4001; border: 2px solid rgba(255,255,255,0.5);"></div>
+    </div>
+    
+    <div style="padding: 20px; display: flex; align-items: center; justify-content: center; gap: 15px; background: rgba(0,0,0,0.5); z-index: 4002;">
+        <span class="material-symbols-outlined" style="color: white; font-size: 20px;">remove</span>
+        <input type="range" id="crop-zoom-slider" min="1" max="4" step="0.05" value="1" style="width: 200px;">
+        <span class="material-symbols-outlined" style="color: white; font-size: 24px;">add</span>
+    </div>
+</div>
+
 <div id="profile-edit-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 3001; justify-content: center; align-items: center; backdrop-filter: blur(5px);">
     <div style="background: var(--bg-sidebar); width: 90%; max-width: 350px; border-radius: 20px; padding: 25px; display: flex; flex-direction: column; align-items: center; box-shadow: var(--shadow-md);">
         <h3 style="margin: 0 0 20px 0; color: var(--text-main);">Редактировать профиль</h3>
@@ -2723,6 +2744,113 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         }
     });
 
+    // --- ЛОГИКА АВАТАР-КРОППЕРА ---
+    const cropModal = document.getElementById('avatar-crop-modal');
+    const cropImg = document.getElementById('crop-image');
+    const cropZoomSlider = document.getElementById('crop-zoom-slider');
+    const cropContainer = document.getElementById('crop-container');
+    
+    let cropCallback = null;
+    let cropScale = 1;
+    let cropX = 0;
+    let cropY = 0;
+    let isDraggingCrop = false;
+    let startDragX = 0, startDragY = 0;
+    
+    function updateCropTransform() {
+        cropImg.style.transform = `translate(${cropX}px, ${cropY}px) scale(${cropScale})`;
+    }
+
+    function openCropper(dataUrl, callback) {
+        cropCallback = callback;
+        cropImg.src = dataUrl;
+        cropScale = 1;
+        cropX = 0;
+        cropY = 0;
+        cropZoomSlider.value = 1;
+        
+        cropImg.onload = () => {
+            const minDim = Math.min(cropImg.naturalWidth, cropImg.naturalHeight);
+            const scaleToFit = 250 / minDim;
+            if (scaleToFit > 1) {
+                cropScale = scaleToFit;
+                cropZoomSlider.value = cropScale;
+                cropZoomSlider.min = cropScale;
+            } else {
+                cropZoomSlider.min = scaleToFit;
+                cropScale = Math.max(1, scaleToFit);
+                cropZoomSlider.value = cropScale;
+            }
+            updateCropTransform();
+            cropModal.style.display = 'flex';
+        };
+    }
+
+    document.getElementById('crop-cancel-btn').addEventListener('click', () => {
+        cropModal.style.display = 'none';
+        cropImg.src = '';
+    });
+
+    document.getElementById('crop-apply-btn').addEventListener('click', () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 250;
+        canvas.height = 250;
+        const ctx = canvas.getContext('2d');
+        
+        ctx.translate(125, 125);
+        ctx.scale(cropScale, cropScale);
+        ctx.translate(cropX / cropScale, cropY / cropScale);
+        ctx.drawImage(cropImg, -cropImg.naturalWidth / 2, -cropImg.naturalHeight / 2);
+        
+        const resultBase64 = canvas.toDataURL('image/jpeg', 0.85);
+        cropModal.style.display = 'none';
+        
+        if (cropCallback) cropCallback(resultBase64);
+    });
+
+    cropZoomSlider.addEventListener('input', (e) => {
+        cropScale = parseFloat(e.target.value);
+        updateCropTransform();
+    });
+
+    const startDrag = (e) => {
+        isDraggingCrop = true;
+        startDragX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+        startDragY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        e.preventDefault();
+    };
+    
+    const onDrag = (e) => {
+        if (!isDraggingCrop) return;
+        const currentX = e.type.includes('mouse') ? e.clientX : e.touches[0].clientX;
+        const currentY = e.type.includes('mouse') ? e.clientY : e.touches[0].clientY;
+        cropX += (currentX - startDragX);
+        cropY += (currentY - startDragY);
+        startDragX = currentX;
+        startDragY = currentY;
+        updateCropTransform();
+    };
+    
+    const endDrag = () => { isDraggingCrop = false; };
+    
+    cropContainer.addEventListener('mousedown', startDrag);
+    window.addEventListener('mousemove', onDrag);
+    window.addEventListener('mouseup', endDrag);
+    
+    cropContainer.addEventListener('touchstart', startDrag, {passive: false});
+    window.addEventListener('touchmove', (e) => {
+        if (isDraggingCrop) e.preventDefault();
+        onDrag(e);
+    }, {passive: false});
+    window.addEventListener('touchend', endDrag);
+
+    cropContainer.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const direction = e.deltaY < 0 ? 1 : -1;
+        cropScale = Math.max(parseFloat(cropZoomSlider.min) || 0.1, Math.min(10, cropScale * (direction > 0 ? 1.1 : 1/1.1)));
+        cropZoomSlider.value = cropScale;
+        updateCropTransform();
+    }, { passive: false });
 
     // --- ПЕРЕМЕННЫЕ ПРОФИЛЯ ---
     const profileModal = document.getElementById('profile-edit-modal');
@@ -2804,10 +2932,15 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     avatarInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
-            compressAvatar(file, (compressedBase64) => {
-                updatePreview(compressedBase64, myUsername);
-            });
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                openCropper(ev.target.result, (croppedBase64) => {
+                    updatePreview(croppedBase64, myUsername);
+                });
+            };
+            reader.readAsDataURL(file);
         }
+        e.target.value = ''; // Сбрасываем чтобы можно было выбрать тот же файл снова
     });
 
     // Удаление аватара (возврат к исходной)
@@ -2870,19 +3003,24 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     groupAvatarInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (file && currentChatIsGroup) {
-            compressAvatar(file, async (compressedBase64) => {
-                const res = await fetch(`/api/groups/${currentChatUser}/update-avatar`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ avatar: compressedBase64 })
-                });
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                openCropper(ev.target.result, async (croppedBase64) => {
+                    const res = await fetch(`/api/groups/${currentChatUser}/update-avatar`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ avatar: croppedBase64 })
+                    });
 
-                if (res.ok) {
-                    document.getElementById('info-avatar').innerHTML = `<img src="${compressedBase64}" style="width:100%; height:100%; object-fit:cover; border-radius:35%; cursor:pointer;" onclick="openAvatarGallery(this, 'group', '${currentChatUser}')">`;
-                    loadActiveChats(); // Обновляем сайдбар
-                }
-            });
+                    if (res.ok) {
+                        document.getElementById('info-avatar').innerHTML = `<img src="${croppedBase64}" style="width:100%; height:100%; object-fit:cover; border-radius:35%; cursor:pointer;" onclick="openAvatarGallery(this, 'group', '${currentChatUser}')">`;
+                        loadActiveChats(); // Обновляем сайдбар
+                    }
+                });
+            };
+            reader.readAsDataURL(file);
         }
+        e.target.value = '';
     });
 
     // --- ЛОГИКА КАТАЛОГА МЕДИА (ВНУТРИ ОКНА) ---
