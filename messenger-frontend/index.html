@@ -5334,6 +5334,12 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 }
             }
             
+            document.getElementById('call-status-text').textContent = 'Соединено!';
+            setTimeout(() => {
+                const el = document.getElementById('call-status-text');
+                if (el) el.style.display = 'none';
+            }, 2000);
+            
         } catch (e) {
             console.error("Ошибка LiveKit:", e);
             alert("Не удалось подключиться к звонку:\n" + (e.message || JSON.stringify(e)));
