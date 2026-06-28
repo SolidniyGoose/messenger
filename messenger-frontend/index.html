@@ -65,10 +65,10 @@
         
         <div style="display: flex; gap: 30px; width: 100%; justify-content: center;">
             <button id="reject-call-btn" style="width: 70px; height: 70px; border-radius: 50%; background: #ff3b30; color: white; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(255,59,48,0.4); transition: transform 0.2s;">
-                <span style="transform: rotate(135deg);">📞</span>
+                <span class="material-symbols-outlined" style="font-size: 36px; transform: rotate(135deg);">call</span>
             </button>
             <button id="accept-call-btn" style="width: 70px; height: 70px; border-radius: 50%; background: #34c759; color: white; border: none; font-size: 28px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(52,199,89,0.4); transition: transform 0.2s;">
-                📞
+                <span class="material-symbols-outlined" style="font-size: 36px;">call</span>
             </button>
         </div>
     </div>
@@ -80,12 +80,12 @@
         <div id="call-status-text" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: white; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 15px; font-size: 14px; z-index: 10;">Соединение...</div>
     </div>
     <div style="height: 100px; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; gap: 20px; padding-bottom: env(safe-area-inset-bottom); position: relative;">
-        <button id="minimize-call-btn" style="position: absolute; left: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);" title="Свернуть">↙️</button>
-        <button id="toggle-mic-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">🎤</button>
-        <button id="toggle-cam-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">📷</button>
-        <button id="toggle-screen-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">💻</button>
-        <button id="end-call-btn" style="width: 60px; height: 60px; border-radius: 50%; background: #ff3b30; color: white; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 59, 48, 0.4);"><span style="display:inline-block; transform: rotate(135deg);">📞</span></button>
-        <button id="call-settings-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px);">⋮</button>
+        <button id="minimize-call-btn" style="position: absolute; left: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;" title="Свернуть"><span class="material-symbols-outlined">call_received</span></button>
+        <button id="toggle-mic-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">mic</span></button>
+        <button id="toggle-cam-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">videocam</span></button>
+        <button id="toggle-screen-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">computer</span></button>
+        <button id="end-call-btn" style="width: 60px; height: 60px; border-radius: 50%; background: #ff3b30; color: white; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 59, 48, 0.4); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined" style="transform: rotate(135deg);">call</span></button>
+        <button id="call-settings-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">more_vert</span></button>
     </div>
     <audio id="remote-audio" autoplay></audio>
 </div>
@@ -4218,7 +4218,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 mediaRecorder.start();
                 isRecording = true;
                 micBtn.classList.add('recording');
-                micBtn.textContent = '🛑'; // Меняем иконку на стоп
+                micBtn.innerHTML = '<span class="material-symbols-outlined">stop</span>'; // Меняем иконку на стоп
                 activeReply = null;
                 replyBanner.style.display = 'none';
             } catch (err) {
@@ -4232,7 +4232,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             mediaRecorder.stream.getTracks().forEach(track => track.stop());
             isRecording = false;
             micBtn.classList.remove('recording');
-            micBtn.textContent = '🎤';
+            micBtn.innerHTML = '<span class="material-symbols-outlined">mic</span>';
         }
     });
     
@@ -4245,12 +4245,12 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         if (circleMediaRecorder.state === 'recording') {
             circleMediaRecorder.pause();
             recordPauseBtn.classList.add('paused');
-            recordPauseBtn.textContent = '▶'; // Меняем на иконку Play
+            recordPauseBtn.innerHTML = '<span class="material-symbols-outlined">play_arrow</span>'; // Меняем на иконку Play
             clearInterval(circleRecordTimerInterval); // Ставим таймер на паузу
         } else if (circleMediaRecorder.state === 'paused') {
             circleMediaRecorder.resume();
             recordPauseBtn.classList.remove('paused');
-            recordPauseBtn.textContent = '||'; // Меняем обратно на паузу
+            recordPauseBtn.innerHTML = '<span class="material-symbols-outlined">pause</span>'; // Меняем обратно на паузу
             
             // Корректируем время старта, чтобы таймер шел правильно
             circleStartTime = Date.now() - (Date.now() - circleStartTime); // Упрощенная логика
@@ -4892,17 +4892,17 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         
         const toggleScreenBtn = document.getElementById('toggle-screen-btn');
         if (toggleScreenBtn) {
-            toggleScreenBtn.textContent = '💻';
+            toggleScreenBtn.innerHTML = '<span class="material-symbols-outlined">computer</span>';
             toggleScreenBtn.style.background = 'rgba(255,255,255,0.2)';
         }
         const toggleCamBtn = document.getElementById('toggle-cam-btn');
         if (toggleCamBtn) {
-            toggleCamBtn.textContent = '📷';
+            toggleCamBtn.innerHTML = '<span class="material-symbols-outlined">videocam</span>';
             toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
         }
         const toggleMicBtn = document.getElementById('toggle-mic-btn');
         if (toggleMicBtn) {
-            toggleMicBtn.textContent = '🎤';
+            toggleMicBtn.innerHTML = '<span class="material-symbols-outlined">mic</span>';
             toggleMicBtn.style.background = 'rgba(255,255,255,0.2)';
         }
     }
@@ -5106,11 +5106,11 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         if (audioTrack) {
             if (audioTrack.isMuted) {
                 audioTrack.unmute();
-                toggleMicBtn.textContent = '🎤';
+                toggleMicBtn.innerHTML = '<span class="material-symbols-outlined">mic</span>';
                 toggleMicBtn.style.background = 'rgba(255,255,255,0.2)';
             } else {
                 audioTrack.mute();
-                toggleMicBtn.textContent = '🔇';
+                toggleMicBtn.innerHTML = '<span class="material-symbols-outlined">mic_off</span>';
                 toggleMicBtn.style.background = '#ff3b30';
             }
         }
@@ -5126,7 +5126,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 if (avatar) avatar.style.display = 'none';
                 const cv = document.getElementById(`cam-${myUsername}`);
                 if (cv) cv.style.display = 'block';
-                toggleCamBtn.textContent = '📷';
+                toggleCamBtn.innerHTML = '<span class="material-symbols-outlined">videocam</span>';
                 toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
             } else {
                 videoTrack.mute();
@@ -5134,7 +5134,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 if (avatar) avatar.style.display = 'flex';
                 const cv = document.getElementById(`cam-${myUsername}`);
                 if (cv) cv.style.display = 'none';
-                toggleCamBtn.textContent = '🚫';
+                toggleCamBtn.innerHTML = '<span class="material-symbols-outlined">videocam_off</span>';
                 toggleCamBtn.style.background = '#ff3b30';
             }
         } else {
@@ -5152,7 +5152,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     if (avatar) avatar.style.display = 'none';
                 }
                 
-                toggleCamBtn.textContent = '📷';
+                toggleCamBtn.innerHTML = '<span class="material-symbols-outlined">videocam</span>';
                 toggleCamBtn.style.background = 'rgba(255,255,255,0.2)';
             } catch (e) { console.error("Ошибка камеры", e); }
         }
@@ -5164,11 +5164,11 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         try {
             if (currentRoom.localParticipant.isScreenShareEnabled) {
                 await currentRoom.localParticipant.setScreenShareEnabled(false);
-                toggleScreenBtn.textContent = '💻';
+                toggleScreenBtn.innerHTML = '<span class="material-symbols-outlined">computer</span>';
                 toggleScreenBtn.style.background = 'rgba(255,255,255,0.2)';
             } else {
                 await currentRoom.localParticipant.setScreenShareEnabled(true, { audio: true });
-                toggleScreenBtn.textContent = '🖥️';
+                toggleScreenBtn.innerHTML = '<span class="material-symbols-outlined">present_to_all</span>';
                 toggleScreenBtn.style.background = 'var(--primary-color)';
             }
         } catch (e) {
