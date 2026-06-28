@@ -695,7 +695,7 @@
                     }
                     
                     if (activeGroup.avatarHash) {
-                        avatar.innerHTML = `<img data-avatar-type="group" data-avatar-id="${activeGroup.id}" data-avatar-hash="${activeGroup.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
+                        avatar.innerHTML = `<img data-avatar-type="group" data-avatar-id="${activeGroup.id}" data-avatar-hash="${activeGroup.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:35%; cursor: pointer;" onclick="if(this.src.length > 100) openGallery(this.src, 0)">`;
                     } else {
                         avatar.innerHTML = `<span class="material-symbols-outlined" style="font-size: 50px;">group</span>`;
                     }
@@ -763,7 +763,7 @@
                     }
 
                     if (userData.avatarHash) {
-                        avatar.innerHTML = `<img data-avatar-type="user" data-avatar-id="${userData.username}" data-avatar-hash="${userData.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:50%;">`;
+                        avatar.innerHTML = `<img data-avatar-type="user" data-avatar-id="${userData.username}" data-avatar-hash="${userData.avatarHash}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="width:100%; height:100%; object-fit:cover; border-radius:50%; cursor: pointer;" onclick="if(this.src.length > 100) openGallery(this.src, 0)">`;
                     } else {
                         avatar.innerHTML = (userData.displayName || userData.username).charAt(0).toUpperCase();
                     }
@@ -2670,7 +2670,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
     function updatePreview(base64, name) {
         if (base64) {
-            previewAvatar.innerHTML = `<img src="${base64}" style="width:100%; height:100%; object-fit:cover;">`;
+            previewAvatar.innerHTML = `<img src="${base64}" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" onclick="if(this.src.length > 100) openGallery(this.src, 0)">`;
             deleteAvatarBtn.style.display = 'block';
             tempAvatarBase64 = base64;
         } else {
@@ -2796,7 +2796,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 });
 
                 if (res.ok) {
-                    document.getElementById('info-avatar').innerHTML = `<img src="${compressedBase64}" style="width:100%; height:100%; object-fit:cover; border-radius:35%;">`;
+                    document.getElementById('info-avatar').innerHTML = `<img src="${compressedBase64}" style="width:100%; height:100%; object-fit:cover; border-radius:35%; cursor:pointer;" onclick="if(this.src.length > 100) openGallery(this.src, 0)">`;
                     loadActiveChats(); // Обновляем сайдбар
                 }
             });
