@@ -38,6 +38,18 @@ app.use(helmet({
     }
 }));
 
+app.get('/api/debug-messages', async (req, res) => {
+    try {
+        const messages = await prisma.message.findMany({
+            take: 20,
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(messages);
+    } catch (e) {
+        res.status(500).json({error: e.toString()});
+    }
+});
+
 const server = http.createServer(app);
 
 const livekitProxy = createProxyMiddleware({ target: 'http://127.0.0.1:7880', ws: true, changeOrigin: true });

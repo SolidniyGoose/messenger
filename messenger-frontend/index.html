@@ -1480,13 +1480,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             if (!mySafe) return null;
             const safeData = typeof mySafe.encryptedKeyBox === 'string' ? JSON.parse(mySafe.encryptedKeyBox) : mySafe.encryptedKeyBox;
             const adminName = safeData.encryptedBy;
-            let adminProfile = APP_CACHE.profiles.get(adminName);
+            let adminCache = APP_CACHE.profiles.get(adminName);
+            let adminProfile = adminCache ? (adminCache.data || adminCache) : null;
             if (!adminProfile) {
                 const res = await fetch(`/api/users/${adminName}`);
                 if (!res.ok) return null;
                 adminProfile = await res.json();
                 if (adminProfile.error) return null; // Handle user not found
-                APP_CACHE.profiles.set(adminName, adminProfile);
+                APP_CACHE.profiles.set(adminName, { data: adminProfile, timestamp: Date.now() });
             }
             if (!adminProfile.publicKey) return null;
             const tempKey = await deriveSharedSecret(adminProfile.publicKey);
@@ -1501,13 +1502,14 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             );
         } else {
             const username = cacheKey.replace('chat_', '');
-            let userProfile = APP_CACHE.profiles.get(username);
+            let userCache = APP_CACHE.profiles.get(username);
+            let userProfile = userCache ? (userCache.data || userCache) : null;
             if (!userProfile) {
                 const res = await fetch(`/api/users/${username}`);
                 if (!res.ok) return null;
                 userProfile = await res.json();
                 if (userProfile.error) return null; // Handle user not found
-                APP_CACHE.profiles.set(username, userProfile);
+                APP_CACHE.profiles.set(username, { data: userProfile, timestamp: Date.now() });
             }
             if (!userProfile.publicKey) return null;
             return await deriveSharedSecret(userProfile.publicKey);
