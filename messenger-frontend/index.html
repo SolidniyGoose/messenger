@@ -1536,7 +1536,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             await ensureHistoryLoaded(cacheKey, isGroup);
             const history = APP_CACHE.history.get(cacheKey) || [];
             const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
-            let text = 'сообщений нет';
+            let text = null;
             let timeStr = '';
             let unreadCount = 0;
             
@@ -1581,8 +1581,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     }
                 }
             }
-            
-            previewContainer.innerHTML = text;
+            if (text !== null) {
+                previewContainer.innerHTML = text;
+            }
             timeContainer.innerHTML = timeStr;
             
             if (unreadCount > 0) {
