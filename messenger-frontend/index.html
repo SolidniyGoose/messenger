@@ -82,8 +82,48 @@
     <div style="height: 100px; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; gap: 20px; padding-bottom: env(safe-area-inset-bottom); position: relative;">
         <button id="minimize-call-btn" style="position: absolute; left: 20px; width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;" title="Свернуть"><span class="material-symbols-outlined">call_received</span></button>
         <button id="toggle-mic-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">mic</span></button>
-        <button id="toggle-cam-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">videocam</span></button>
-        <button id="toggle-screen-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">computer</span></button>
+        
+        <div style="display: flex; background: rgba(255,255,255,0.2); border-radius: 30px; backdrop-filter: blur(5px); position: relative;" id="cam-control-group">
+            <button id="toggle-cam-btn" style="width: 60px; height: 60px; border-radius: 30px 0 0 30px; background: transparent; color: white; border: none; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">videocam</span></button>
+            <div style="width: 1px; background: rgba(255,255,255,0.2); margin: 10px 0;"></div>
+            <button id="cam-quality-btn" style="width: 30px; height: 60px; border-radius: 0 30px 30px 0; background: transparent; color: white; border: none; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined" id="cam-quality-icon">expand_less</span></button>
+            <div id="cam-quality-menu" style="display: none; position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); background: #222; border-radius: 15px; padding: 15px; width: 180px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10000; flex-direction: column; gap: 10px;">
+                <div style="color: var(--text-muted); font-size: 12px; font-weight: bold; text-transform: uppercase;">Разрешение</div>
+                <select id="cam-res-select" style="width: 100%; padding: 8px; border-radius: 8px; background: #333; color: white; border: none; font-size: 14px; outline: none; cursor: pointer;">
+                    <option value="360">360p</option>
+                    <option value="480">480p</option>
+                    <option value="720" selected>720p</option>
+                    <option value="1080">1080p</option>
+                </select>
+                <div style="color: var(--text-muted); font-size: 12px; font-weight: bold; text-transform: uppercase; margin-top: 5px;">Кадры в сек. (FPS)</div>
+                <select id="cam-fps-select" style="width: 100%; padding: 8px; border-radius: 8px; background: #333; color: white; border: none; font-size: 14px; outline: none; cursor: pointer;">
+                    <option value="15">15 FPS</option>
+                    <option value="30" selected>30 FPS</option>
+                    <option value="60">60 FPS</option>
+                </select>
+            </div>
+        </div>
+
+        <div style="display: flex; background: rgba(255,255,255,0.2); border-radius: 30px; backdrop-filter: blur(5px); position: relative;" id="screen-control-group">
+            <button id="toggle-screen-btn" style="width: 60px; height: 60px; border-radius: 30px 0 0 30px; background: transparent; color: white; border: none; font-size: 24px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">computer</span></button>
+            <div style="width: 1px; background: rgba(255,255,255,0.2); margin: 10px 0;"></div>
+            <button id="screen-quality-btn" style="width: 30px; height: 60px; border-radius: 0 30px 30px 0; background: transparent; color: white; border: none; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined" id="screen-quality-icon">expand_less</span></button>
+            <div id="screen-quality-menu" style="display: none; position: absolute; bottom: 70px; left: 50%; transform: translateX(-50%); background: #222; border-radius: 15px; padding: 15px; width: 180px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); z-index: 10000; flex-direction: column; gap: 10px;">
+                <div style="color: var(--text-muted); font-size: 12px; font-weight: bold; text-transform: uppercase;">Разрешение экрана</div>
+                <select id="screen-res-select" style="width: 100%; padding: 8px; border-radius: 8px; background: #333; color: white; border: none; font-size: 14px; outline: none; cursor: pointer;">
+                    <option value="720">720p</option>
+                    <option value="1080" selected>1080p</option>
+                    <option value="1440">1440p (2K)</option>
+                    <option value="2160">2160p (4K)</option>
+                </select>
+                <div style="color: var(--text-muted); font-size: 12px; font-weight: bold; text-transform: uppercase; margin-top: 5px;">Кадры в сек. (FPS)</div>
+                <select id="screen-fps-select" style="width: 100%; padding: 8px; border-radius: 8px; background: #333; color: white; border: none; font-size: 14px; outline: none; cursor: pointer;">
+                    <option value="15">15 FPS</option>
+                    <option value="30" selected>30 FPS</option>
+                    <option value="60">60 FPS</option>
+                </select>
+            </div>
+        </div>
         <button id="end-call-btn" style="width: 60px; height: 60px; border-radius: 50%; background: #ff3b30; color: white; border: none; font-size: 24px; cursor: pointer; box-shadow: 0 4px 15px rgba(255, 59, 48, 0.4); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined" style="transform: rotate(135deg);">call</span></button>
         <button id="call-settings-btn" style="width: 60px; height: 60px; border-radius: 50%; background: rgba(255,255,255,0.2); color: white; border: none; font-size: 24px; cursor: pointer; backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center;"><span class="material-symbols-outlined">more_vert</span></button>
     </div>
@@ -5008,6 +5048,109 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
         if (screenAudio) screenAudio.remove();
     }
 
+    let camQualityPrefs = { width: 1280, height: 720, frameRate: 30 };
+    let screenQualityPrefs = { width: 1920, height: 1080, frameRate: 30 };
+
+    function parseRes(resStr) {
+        if (resStr === "360") return { width: 640, height: 360 };
+        if (resStr === "480") return { width: 854, height: 480 };
+        if (resStr === "720") return { width: 1280, height: 720 };
+        if (resStr === "1080") return { width: 1920, height: 1080 };
+        if (resStr === "1440") return { width: 2560, height: 1440 };
+        if (resStr === "2160") return { width: 3840, height: 2160 };
+        return { width: 1280, height: 720 };
+    }
+
+    const camQualityBtn = document.getElementById('cam-quality-btn');
+    const camQualityMenu = document.getElementById('cam-quality-menu');
+    const camResSelect = document.getElementById('cam-res-select');
+    const camFpsSelect = document.getElementById('cam-fps-select');
+
+    camQualityBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        camQualityMenu.style.display = camQualityMenu.style.display === 'none' ? 'flex' : 'none';
+        screenQualityMenu.style.display = 'none';
+    });
+
+    camResSelect.addEventListener('change', async () => {
+        const res = parseRes(camResSelect.value);
+        camQualityPrefs.width = res.width;
+        camQualityPrefs.height = res.height;
+        await applyCameraConstraints();
+    });
+
+    camFpsSelect.addEventListener('change', async () => {
+        camQualityPrefs.frameRate = parseInt(camFpsSelect.value);
+        await applyCameraConstraints();
+    });
+
+    async function applyCameraConstraints() {
+        if (!currentRoom) return;
+        let videoTrack = localTracks.find(t => t.kind === LivekitClient.Track.Kind.Video);
+        if (videoTrack && !videoTrack.isMuted) {
+            try {
+                await currentRoom.localParticipant.unpublishTrack(videoTrack);
+                videoTrack.stop();
+                localTracks = localTracks.filter(t => t !== videoTrack);
+                
+                const newTracks = await LivekitClient.createLocalTracks({ 
+                    audio: false, 
+                    video: { resolution: { width: camQualityPrefs.width, height: camQualityPrefs.height, frameRate: camQualityPrefs.frameRate } } 
+                });
+                const newVideoTrack = newTracks[0];
+                localTracks.push(newVideoTrack);
+                await currentRoom.localParticipant.publishTrack(newVideoTrack);
+                
+                const cv = document.getElementById(`cam-${myUsername}`);
+                if (cv) {
+                    newVideoTrack.attach(cv);
+                    cv.style.display = 'block';
+                }
+            } catch (e) { console.error("Failed to apply camera constraints", e); }
+        }
+    }
+
+    const screenQualityBtn = document.getElementById('screen-quality-btn');
+    const screenQualityMenu = document.getElementById('screen-quality-menu');
+    const screenResSelect = document.getElementById('screen-res-select');
+    const screenFpsSelect = document.getElementById('screen-fps-select');
+
+    screenQualityBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        screenQualityMenu.style.display = screenQualityMenu.style.display === 'none' ? 'flex' : 'none';
+        camQualityMenu.style.display = 'none';
+    });
+
+    screenResSelect.addEventListener('change', async () => {
+        const res = parseRes(screenResSelect.value);
+        screenQualityPrefs.width = res.width;
+        screenQualityPrefs.height = res.height;
+        await applyScreenConstraints();
+    });
+
+    screenFpsSelect.addEventListener('change', async () => {
+        screenQualityPrefs.frameRate = parseInt(screenFpsSelect.value);
+        await applyScreenConstraints();
+    });
+
+    async function applyScreenConstraints() {
+        if (!currentRoom) return;
+        if (currentRoom.localParticipant.isScreenShareEnabled) {
+            try {
+                await currentRoom.localParticipant.setScreenShareEnabled(false);
+                await currentRoom.localParticipant.setScreenShareEnabled(true, { 
+                    audio: true, 
+                    resolution: { width: screenQualityPrefs.width, height: screenQualityPrefs.height, frameRate: screenQualityPrefs.frameRate } 
+                });
+            } catch (e) { console.error("Failed to apply screen constraints", e); }
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('#cam-control-group')) camQualityMenu.style.display = 'none';
+        if (!e.target.closest('#screen-control-group')) screenQualityMenu.style.display = 'none';
+    });
+
     async function joinLiveKitRoom(roomName, enableVideo) {
         try {
             isCallActive = true;
@@ -5123,7 +5266,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             
             const tracks = await LivekitClient.createLocalTracks({
                 audio: true,
-                video: enableVideo ? { resolution: LivekitClient.VideoPresets.h720.resolution } : false
+                video: enableVideo ? { resolution: { width: camQualityPrefs.width, height: camQualityPrefs.height, frameRate: camQualityPrefs.frameRate } } : false
             });
             
             localTracks = tracks;
@@ -5186,7 +5329,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             }
         } else {
             try {
-                const newTracks = await LivekitClient.createLocalTracks({ audio: false, video: true });
+                const newTracks = await LivekitClient.createLocalTracks({ 
+                    audio: false, 
+                    video: { resolution: { width: camQualityPrefs.width, height: camQualityPrefs.height, frameRate: camQualityPrefs.frameRate } } 
+                });
                 videoTrack = newTracks[0];
                 localTracks.push(videoTrack);
                 await currentRoom.localParticipant.publishTrack(videoTrack);
@@ -5214,7 +5360,10 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 toggleScreenBtn.innerHTML = '<span class="material-symbols-outlined">computer</span>';
                 toggleScreenBtn.style.background = 'rgba(255,255,255,0.2)';
             } else {
-                await currentRoom.localParticipant.setScreenShareEnabled(true, { audio: true });
+                await currentRoom.localParticipant.setScreenShareEnabled(true, { 
+                    audio: true,
+                    resolution: { width: screenQualityPrefs.width, height: screenQualityPrefs.height, frameRate: screenQualityPrefs.frameRate }
+                });
                 toggleScreenBtn.innerHTML = '<span class="material-symbols-outlined">present_to_all</span>';
                 toggleScreenBtn.style.background = 'var(--primary-color)';
             }
