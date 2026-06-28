@@ -68,6 +68,8 @@ router.get('/search', async (req, res) => {
         console.error("Ошибка при поиске пользователей:", error);
         res.status(500).json({ error: "Ошибка поиска" });
     }
+});
+
 // 6. ПОЛУЧЕНИЕ ИСТОРИИ АВАТАРОК ПОЛЬЗОВАТЕЛЯ
 router.get('/:username/avatars', async (req, res) => {
     try {
