@@ -3059,21 +3059,36 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
 
     // 1. Слушаем ввод текста с клавиатуры    
     const searchBar = document.querySelector('.search-bar');
+    let searchAbortController = null;
+
     if (searchBar) {
         searchBar.addEventListener('input', async (e) => {
             const q = e.target.value.trim();
+            
+            if (searchAbortController) {
+                searchAbortController.abort(); // Отменяем предыдущий запрос
+            }
+
             if (q.length < 2) {
                 renderChatsLocally(GLOB_activeUsers, GLOB_myGroups);
                 return;
             }
+
+            searchAbortController = new AbortController();
+            
             try {
-                const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
+                const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`, {
+                    signal: searchAbortController.signal
+                });
+                
                 if (res.ok) {
                     const results = await res.json();
                     renderChatsLocally(results, []); // Показываем только результаты поиска пользователей
                 }
             } catch (err) {
-                console.error('Ошибка поиска:', err);
+                if (err.name !== 'AbortError') {
+                    console.error('Ошибка поиска:', err);
+                }
             }
         });
     }
