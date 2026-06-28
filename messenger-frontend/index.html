@@ -5458,13 +5458,11 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             
             const roomOptions = {
                 ...e2eeConfig,
-                adaptiveStream: true,
-                dynacast: true,
+                adaptiveStream: false,
+                dynacast: false,
                 publishDefaults: {
-                    // Принудительно используем H.264, так как он поддерживается 
-                    // аппаратным ускорением на 99% видеокарт (в отличие от VP8)
                     videoCodec: 'h264',
-                    simulcast: true
+                    simulcast: false
                 }
             };
             
