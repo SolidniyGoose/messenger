@@ -48,8 +48,8 @@ router.get('/search', async (req, res) => {
         const users = await prisma.user.findMany({
             where: {
                 OR: [
-                    { username: { contains: q } },
-                    { displayName: { contains: q } } // Регистронезависимый поиск в SQLite
+                    { username: { contains: q, mode: 'insensitive' } },
+                    { displayName: { contains: q, mode: 'insensitive' } } // Регистронезависимый поиск
                 ]
             },
             select: { username: true, displayName: true, avatar: true, bio: true, publicKey: true },

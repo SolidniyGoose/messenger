@@ -1623,7 +1623,7 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
     }
 
     // Функция для отрисовки без запросов к серверу (для мгновенного UI и поиска)
-    function renderChatsLocally(usersToShow, groupsToShow, globalUsersToShow = null) {
+    async function renderChatsLocally(usersToShow, groupsToShow, globalUsersToShow = null) {
         try {
             const chatsContainer = document.getElementById('chats-container');
             chatsContainer.innerHTML = ''; 
@@ -1638,8 +1638,45 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 chatsContainer.appendChild(localHeader);
             }
 
-            // Рендерим ГРУППЫ
-            groupsToShow.forEach(group => {
+            const combinedChats = [];
+            const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
+
+            // Собираем группы и их время
+            for (const group of groupsToShow) {
+                await ensureHistoryLoaded(`group_${group.id}`, true);
+                const hist = APP_CACHE.history.get(`group_${group.id}`) || [];
+                let lastTime = 0;
+                for (let i = hist.length - 1; i >= 0; i--) {
+                    if (!deletedLocally.includes(hist[i].id)) {
+                        lastTime = new Date(hist[i].createdAt).getTime();
+                        break;
+                    }
+                }
+                combinedChats.push({ type: 'group', data: group, time: lastTime });
+            }
+
+            // Собираем личные чаты и их время
+            for (const user of usersToShow) {
+                if (user.username === myUsername) continue;
+                await ensureHistoryLoaded(`chat_${user.username}`, false);
+                const hist = APP_CACHE.history.get(`chat_${user.username}`) || [];
+                let lastTime = 0;
+                for (let i = hist.length - 1; i >= 0; i--) {
+                    if (!deletedLocally.includes(hist[i].id)) {
+                        lastTime = new Date(hist[i].createdAt).getTime();
+                        break;
+                    }
+                }
+                combinedChats.push({ type: 'user', data: user, time: lastTime });
+            }
+
+            // СОРТИРУЕМ ПО ВРЕМЕНИ (Новые сверху)
+            combinedChats.sort((a, b) => b.time - a.time);
+
+            // Рендерим отсортированный список
+            for (const chatObj of combinedChats) {
+                if (chatObj.type === 'group') {
+                    const group = chatObj.data;
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
                 
@@ -1688,11 +1725,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 
                 chatItem.addEventListener('click', () => openGroupChat(group));
                 chatsContainer.appendChild(chatItem);
-            });
-
-            // Рендерим ЛИЧНЫЕ ЧАТЫ
-            usersToShow.forEach(user => {
-                if (user.username === myUsername) return;
+                } else if (chatObj.type === 'user') {
+                    const user = chatObj.data;
 
                 const chatItem = document.createElement('div');
                 chatItem.className = 'chat-mock';
@@ -1743,7 +1777,8 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 
                 chatItem.addEventListener('click', () => openChatWith(user));
                 chatsContainer.appendChild(chatItem);
-            });
+                }
+            }
 
             // Рендерим ГЛОБАЛЬНЫЙ ПОИСК
             if (isSearch) {
