@@ -1708,9 +1708,20 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
             const combinedChats = [];
             const deletedLocally = JSON.parse(localStorage.getItem('deletedMessages') || '[]');
 
-            // Собираем группы и их время
+            // 1. Сначала параллельно загружаем историю для всех чатов и групп (вместо медленной последовательной загрузки)
+            const prefetchPromises = [];
             for (const group of groupsToShow) {
-                await ensureHistoryLoaded(`group_${group.id}`, true);
+                prefetchPromises.push(ensureHistoryLoaded(`group_${group.id}`, true));
+            }
+            for (const user of usersToShow) {
+                if (user.username !== myUsername) {
+                    prefetchPromises.push(ensureHistoryLoaded(`chat_${user.username}`, false));
+                }
+            }
+            await Promise.all(prefetchPromises);
+
+            // 2. Теперь собираем группы и их время (всё уже в кэше!)
+            for (const group of groupsToShow) {
                 const hist = APP_CACHE.history.get(`group_${group.id}`) || [];
                 let lastTime = 0;
                 for (let i = hist.length - 1; i >= 0; i--) {
@@ -1722,10 +1733,9 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                 combinedChats.push({ type: 'group', data: group, time: lastTime });
             }
 
-            // Собираем личные чаты и их время
+            // 3. Собираем личные чаты и их время
             for (const user of usersToShow) {
                 if (user.username === myUsername) continue;
-                await ensureHistoryLoaded(`chat_${user.username}`, false);
                 const hist = APP_CACHE.history.get(`chat_${user.username}`) || [];
                 let lastTime = 0;
                 for (let i = hist.length - 1; i >= 0; i--) {
@@ -5661,6 +5671,13 @@ document.getElementById('close-admin-btn').addEventListener('click', () => {
                     audio: true,
                     resolution: { width: screenQualityPrefs.width, height: screenQualityPrefs.height, frameRate: screenQualityPrefs.frameRate }
                 });
+                
+                // Принудительно говорим браузеру отдавать приоритет FPS, а не чёткости текста
+                const screenTrack = currentRoom.localParticipant.getTrack(LivekitClient.Track.Source.ScreenShare);
+                if (screenTrack && screenTrack.track) {
+                    screenTrack.track.contentHint = 'motion';
+                }
+                
                 toggleScreenBtn.innerHTML = '<span class="material-symbols-outlined">present_to_all</span>';
                 toggleScreenBtn.style.background = 'var(--primary-color)';
                 toggleScreenBtn.style.borderRightColor = 'transparent';
